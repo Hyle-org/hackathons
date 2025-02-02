@@ -1,0 +1,3 @@
+[workspace]
+members = ["oidc_provider", "oidc_identity"]
+resolver = "2"
