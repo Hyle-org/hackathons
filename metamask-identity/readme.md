@@ -26,7 +26,7 @@ Before starting the demo, ensure you have the following installed:
     - Run the following command:
 
     ```bash
-    cargo run -- register contract
+    cargo run -- register-contract
     ```
 
 3.  **Start Proof Server:**
@@ -43,6 +43,7 @@ Before starting the demo, ensure you have the following installed:
     - Run the following command:
 
     ```bash
+    yarn install
     yarn start
     ```
 

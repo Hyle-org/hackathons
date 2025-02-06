@@ -3,6 +3,7 @@ import type {
   OnHomePageHandler,
   OnInstallHandler,
   OnSignatureHandler,
+  OnRpcRequestHandler,
 } from '@metamask/snaps-sdk';
 import { UserInputEventType } from '@metamask/snaps-sdk';
 import { Box, Heading, Text, Divider, Button } from '@metamask/snaps-sdk/jsx';
@@ -70,6 +71,40 @@ async function signMessage() {
 // Convert message to hex format
 function toHexMessage(message: string): string {
   return `0x${Buffer.from(message, 'utf8').toString('hex')}`;
+}
+
+export const onRpcRequest: OnRpcRequestHandler = async ({
+  origin,
+  request,
+}) => {
+  console.log('RPC request', request);
+  switch (request.method) {
+    case "hello":
+      const signature = await signMessage();
+      const ethAddr = await ethereum.request({
+        method: 'eth_requestAccounts',
+      });
+      const generatedProof = await registerIdentity(signature, ethAddr[0]);
+
+      await snap.request({
+        method: 'snap_dialog',
+        params: {
+          type: 'alert',
+          content: (
+            <Box>
+              <Text>Registration Completed !</Text>
+              <Divider />
+              <Text>generatedProof tx:</Text>
+              <Text>{generatedProof}</Text>
+            </Box>
+          ),
+        },
+      });
+      return "world!"
+
+    default:
+      throw new Error("Method not found.")
+  }
 }
 
 // Store account on Snap install
