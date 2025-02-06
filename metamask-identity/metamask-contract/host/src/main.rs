@@ -4,7 +4,7 @@ use client_sdk::helpers::risc0::Risc0Prover;
 use contract_identity::IdentityContractState;
 use hex::decode;
 use k256::ecdsa::{RecoveryId, Signature, VerifyingKey};
-use sdk::RegisterContractTransaction;
+use sdk::api::APIRegisterContract;
 use sdk::{BlobTransaction, TxHash};
 use sdk::{ContractInput, Digestable};
 use sdk::{Identity, ProofTransaction};
@@ -75,17 +75,13 @@ async fn main() {
             println!("Initial state: {:?}", initial_state);
 
             // Send the transaction to register the contract
-            let register_tx = RegisterContractTransaction {
-                owner: "examples".to_string(),
+            let register_tx = APIRegisterContract {
                 verifier: "risc0".into(),
                 program_id: sdk::ProgramId(sdk::to_u8_array(&GUEST_ID).to_vec()),
                 state_digest: initial_state.as_digest(),
                 contract_name: contract_name.clone().into(),
             };
-            let res = client
-                .send_tx_register_contract(&register_tx)
-                .await
-                .unwrap();
+            let res = client.register_contract(&register_tx).await.unwrap();
 
             println!("✅ Register contract tx sent. Tx hash: {}", res);
         }
@@ -140,9 +136,10 @@ async fn main() {
                 initial_state: initial_state.as_digest(),
                 identity: identity.clone().into(),
                 tx_hash: blob_tx_hash,
-                private_blob: sdk::BlobData(password.into_bytes().to_vec()),
+                private_input: password.into_bytes().to_vec(),
                 blobs: blobs.clone(),
                 index: sdk::BlobIndex(0),
+                tx_ctx: None,
             };
 
             println!("inputs: {:?}", inputs.clone());
@@ -203,9 +200,10 @@ async fn main() {
                     initial_state: initial_state.as_digest(),
                     identity: blob_tx.identity,
                     tx_hash: blob_tx_hash.clone(),
-                    private_blob: sdk::BlobData(vec![]),
+                    private_input: vec![],
                     blobs: blobs.clone(),
                     index: sdk::BlobIndex(0),
+                    tx_ctx: None,
                 };
 
                 // Generate the zk proof
@@ -262,9 +260,10 @@ async fn main() {
                     initial_state: initial_state.as_digest(),
                     identity: blob_tx.identity,
                     tx_hash: blob_tx_hash.clone(),
-                    private_blob: sdk::BlobData(vec![]),
+                    private_input: vec![],
                     blobs: blobs.clone(),
                     index: sdk::BlobIndex(0),
+                    tx_ctx: None,
                 };
 
                 // Generate the zk proof
@@ -358,9 +357,10 @@ async fn prove(Json(request): Json<ProveRequest>) -> Json<TxHash> {
         initial_state: initial_state.as_digest(),
         identity: request.identity.clone().into(),
         tx_hash: request.tx_hash.clone().into(),
-        private_blob: sdk::BlobData(request.signature.into_bytes().to_vec()),
+        private_input: request.signature.into_bytes().to_vec(),
         blobs: blobs.clone(),
         index: sdk::BlobIndex(0),
+        tx_ctx: None,
     };
 
     println!("inputs {:?}", inputs.clone());
