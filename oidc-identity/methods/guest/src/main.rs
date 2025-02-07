@@ -3,9 +3,12 @@
 
 extern crate alloc;
 
-use sdk::guest::{commit, GuestEnv, Risc0Env};
+use sdk::guest::commit;
+use sdk::guest::GuestEnv;
+use sdk::guest::Risc0Env;
+
+use oidc_identity::execute;
 use sdk::ContractInput;
-use OidcIdentity::execute;
 
 risc0_zkvm::guest::entry!(main);
 

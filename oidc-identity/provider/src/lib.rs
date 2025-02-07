@@ -7,16 +7,26 @@ use serde::{Deserialize, Serialize};
 use hyle_model::{Blob, BlobData, BlobIndex, ContractAction, ContractName, Digestable};
 use sdk::RunResult;
 
-pub mod provider;
-
 use alloc::{format, string::String, vec::Vec};
+
+#[derive(Encode, Decode, Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
+pub struct JwkPublicKey {
+    pub n: String,
+    pub e: String,
+}
+
+#[derive(Encode, Decode, Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
+pub struct OpenIdContext {
+    pub issuer: String,
+    pub audience: String,
+}
 
 pub trait IdentityVerification {
     fn register_identity(
         &mut self,
         account: &str,
-        n: &str,
-        e: &str,
+        context: &OpenIdContext,
+        jwk_pub_key: &JwkPublicKey,
         private_input: &str,
     ) -> Result<(), &'static str>;
 
@@ -24,8 +34,8 @@ pub trait IdentityVerification {
         &mut self,
         account: &str,
         nonce: u32,
-        n: &str,
-        e: &str,
+        context: &OpenIdContext,
+        jwk_pub_key: &JwkPublicKey,
         private_input: &str,
     ) -> Result<bool, &'static str>;
 
@@ -37,14 +47,14 @@ pub trait IdentityVerification {
 pub enum IdentityAction {
     RegisterIdentity {
         account: String,
-        n: String,
-        e: String,
+        context: OpenIdContext,
+        jwk_pub_key: JwkPublicKey,
     },
     VerifyIdentity {
         account: String,
         nonce: u32,
-        n: String,
-        e: String,
+        context: OpenIdContext,
+        jwk_pub_key: JwkPublicKey,
     },
     GetIdentityInfo {
         account: String,
@@ -80,21 +90,23 @@ pub fn execute_action<T: IdentityVerification + Digestable>(
     private_input: &str,
 ) -> RunResult<T> {
     let program_output = match action {
-        IdentityAction::RegisterIdentity { account, n, e } => {
-            match state.register_identity(&account, &n, &e, private_input) {
-                Ok(()) => Ok(format!(
-                    "Successfully registered identity for account: {}",
-                    account
-                )),
-                Err(err) => Err(format!("Failed to register identity: {}", err)),
-            }
-        }
+        IdentityAction::RegisterIdentity {
+            account,
+            context,
+            jwk_pub_key,
+        } => match state.register_identity(&account, &context, &jwk_pub_key, private_input) {
+            Ok(()) => Ok(format!(
+                "Successfully registered identity for account: {}",
+                account
+            )),
+            Err(err) => Err(format!("Failed to register identity: {}", err)),
+        },
         IdentityAction::VerifyIdentity {
             account,
             nonce,
-            n,
-            e,
-        } => match state.verify_identity(&account, nonce, &n, &e, private_input) {
+            context,
+            jwk_pub_key,
+        } => match state.verify_identity(&account, nonce, &context, &jwk_pub_key, private_input) {
             Ok(true) => Ok(format!("Identity verified for account: {}", account)),
             Ok(false) => Err(format!(
                 "Identity verification failed for account: {}",

@@ -1,14 +1,12 @@
 use bincode::{Decode, Encode};
-use jsonwebtoken::DecodingKey;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-use oidc_provider::{provider::OidcProvider, IdentityAction, IdentityVerification};
+use oidc_provider::{IdentityAction, IdentityVerification, JwkPublicKey, OpenIdContext};
 use sdk::{ContractInput, Digestable, RunResult};
 use sha2::{Digest, Sha256};
 
-#[cfg(feature = "client")]
-pub mod client;
+mod jwt;
 
 #[derive(Encode, Decode, Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
 pub struct AccountInfo {
@@ -51,14 +49,11 @@ impl IdentityVerification for OidcIdentity {
     fn register_identity(
         &mut self,
         account: &str,
-        n: &str,
-        e: &str,
+        context: &OpenIdContext,
+        jwk_pub_key: &JwkPublicKey,
         private_input: &str,
     ) -> Result<(), &'static str> {
-        let decoding_key = DecodingKey::from_rsa_components(n, e)
-            .expect("Failed to create decoding key from RSA components");
-
-        let data = OidcProvider::verify_id_token_jwt(private_input, &decoding_key)
+        let data = jwt::verify_jwt_signature(private_input, &jwk_pub_key, &context)
             .expect("Failed to verify ID token JWT");
 
         let sub = data.sub;
@@ -87,8 +82,8 @@ impl IdentityVerification for OidcIdentity {
         &mut self,
         account: &str,
         nonce: u32,
-        n: &str,
-        e: &str,
+        context: &OpenIdContext,
+        jwk_pub_key: &JwkPublicKey,
         private_input: &str,
     ) -> Result<bool, &'static str> {
         match self.identities.get_mut(account) {
@@ -97,10 +92,7 @@ impl IdentityVerification for OidcIdentity {
                     return Err("Invalid nonce");
                 }
 
-                let decoding_key = DecodingKey::from_rsa_components(n, e)
-                    .expect("Failed to create decoding key from RSA components");
-
-                let data = OidcProvider::verify_id_token_jwt(private_input, &decoding_key)
+                let data = jwt::verify_jwt_signature(private_input, &jwk_pub_key, &context)
                     .expect("Failed to verify ID token JWT");
 
                 let sub = data.sub;
@@ -131,17 +123,18 @@ impl IdentityVerification for OidcIdentity {
 
 impl Digestable for OidcIdentity {
     fn as_digest(&self) -> sdk::StateDigest {
-        sdk::StateDigest(self.to_bytes())
+        sdk::StateDigest(
+            bincode::encode_to_vec(self, bincode::config::standard())
+                .expect("Failed to encode Balances"),
+        )
     }
 }
-
-impl TryFrom<sdk::StateDigest> for OidcIdentity {
-    type Error = anyhow::Error;
-
-    fn try_from(state: sdk::StateDigest) -> Result<Self, Self::Error> {
-        let (balances, _) = bincode::decode_from_slice(&state.0, bincode::config::standard())
-            .map_err(|_| anyhow::anyhow!("Could not decode hydentity state"))?;
-        Ok(balances)
+impl From<sdk::StateDigest> for OidcIdentity {
+    fn from(state: sdk::StateDigest) -> Self {
+        let (state, _) = bincode::decode_from_slice(&state.0, bincode::config::standard())
+            .map_err(|_| "Could not decode identity state".to_string())
+            .unwrap();
+        state
     }
 }
 
@@ -156,8 +149,6 @@ pub fn execute(input: ContractInput) -> RunResult<OidcIdentity> {
             return Err("Failed to parse input blob".to_string());
         }
     };
-
-    sdk::info!("Executing action: {:?}", parsed_blob);
 
     let state: OidcIdentity = input
         .initial_state
@@ -174,62 +165,91 @@ pub fn execute(input: ContractInput) -> RunResult<OidcIdentity> {
 mod tests {
     use super::*;
     use base64::{engine::general_purpose::STANDARD, Engine};
-    use jsonwebtoken::{encode, EncodingKey, Header};
-    use oidc_provider::provider::Claims;
-    use rsa::{pkcs1::DecodeRsaPublicKey, traits::PublicKeyParts, RsaPublicKey};
-    // use serde_json;
-    // use sha2::{Digest, Sha256};
+    use jwt::Claims;
+    use rsa::{
+        pkcs1::DecodeRsaPrivateKey, traits::PublicKeyParts, Pkcs1v15Sign, RsaPrivateKey,
+        RsaPublicKey,
+    };
+    use serde_json::json;
+    use sha2::{Digest, Sha256};
 
-    /// Test RSA public key (PEM format)
-    const RSA_PUBLIC_PEM: &str = r#"
-    -----BEGIN RSA PUBLIC KEY-----
-    MIIBCgKCAQEApz/3Mvw7UuDJiITkGhW8gFKo6v5JOM5d5FDblBqHpPbYXe+IgbrA
-    p9hN9nQnpuX1kS9HbUZAYJ/zmrkTHsAAfwIDAQAB
-    -----END RSA PUBLIC KEY-----
-    "#;
-
-    /// Extracts `n` and `e` from the RSA public key
-    fn extract_n_e_from_rsa() -> (String, String) {
-        let rsa_public_key =
-            RsaPublicKey::from_pkcs1_pem(RSA_PUBLIC_PEM).expect("Invalid PEM public key");
-
-        let n_bytes = rsa_public_key.n().to_bytes_be();
-        let e_bytes = rsa_public_key.e().to_bytes_be();
-
-        let n_base64 = STANDARD.encode(n_bytes);
-        let e_base64 = STANDARD.encode(e_bytes);
-
-        (n_base64, e_base64)
+    fn get_context() -> OpenIdContext {
+        OpenIdContext {
+            issuer: "https://login.microsoftonline.com/{tenantid}/v2.0".to_string(),
+            audience: "your-client-id".to_string(),
+        }
     }
 
-    /// Generates a valid RS256 JWT token using the RSA private key
-    fn generate_test_jwt() -> String {
+    fn encode_b64(msg: &[u8]) -> String {
+        STANDARD.encode(msg)
+    }
+
+    fn sha256_hash(data: &[u8]) -> Vec<u8> {
+        let mut hasher = Sha256::new();
+        hasher.update(data);
+        hasher.finalize().to_vec()
+    }
+
+    /// Generates a valid JWT **AND** returns the associated JWK public key
+    pub fn generate_test_jwt() -> (JwkPublicKey, String) {
         let rsa_private_pem = r#"
-        -----BEGIN RSA PRIVATE KEY-----
-        MIIBOwIBAAJBAKz7G89P7Hkd4npGrwN3kqLHFyzJ+U5J6LZMjxvi5VoTbH+MFjt9
-        e2kzC7gTwLtBOCjRxY9bOAjhS+u93lBW2kkCAwEAAQJAOG4z8BPIqEkCJGVmtqqB
-        X7pPZtYZm0b0P2FsQnSHnx/higfx8gU04bKgUyO74VPcCRiPL9H+g61V/ezh5nGp
-        EQIhAOuPZ+20EV0D4lWBkP7QGgLJk8CF+Zw1u3KfNp+z/YVXAiEAxHvl4wM5Joey
-        h5qNT2ZXYlfh7VYmnOdEsF5/QV1V7U8CIQCZLdVzUIZ4N2e/WbsccnoyvdLMRjcD
-        7jsXLDbf8f4CAQIgXewgrG00A3UlE4uLhQ+jRl5rUBBRQHkylJzBI6U5t1ECIQDI
-        xWa1QtWW9/6kUd5UJfV/Y2Zgo/sVEXbA1kPuo3FYrQ==
-        -----END RSA PRIVATE KEY-----
+            -----BEGIN RSA PRIVATE KEY-----
+            MIIBOwIBAAJBAKz7G89P7Hkd4npGrwN3kqLHFyzJ+U5J6LZMjxvi5VoTbH+MFjt9
+            e2kzC7gTwLtBOCjRxY9bOAjhS+u93lBW2kkCAwEAAQJAOG4z8BPIqEkCJGVmtqqB
+            X7pPZtYZm0b0P2FsQnSHnx/higfx8gU04bKgUyO74VPcCRiPL9H+g61V/ezh5nGp
+            EQIhAOuPZ+20EV0D4lWBkP7QGgLJk8CF+Zw1u3KfNp+z/YVXAiEAxHvl4wM5Joey
+            h5qNT2ZXYlfh7VYmnOdEsF5/QV1V7U8CIQCZLdVzUIZ4N2e/WbsccnoyvdLMRjcD
+            7jsXLDbf8f4CAQIgXewgrG00A3UlE4uLhQ+jRl5rUBBRQHkylJzBI6U5t1ECIQDI
+            xWa1QtWW9/6kUd5UJfV/Y2Zgo/sVEXbA1kPuo3FYrQ==
+            -----END RSA PRIVATE KEY-----
         "#;
 
+        // Load RSA private key
+        let private_key =
+            RsaPrivateKey::from_pkcs1_pem(rsa_private_pem).expect("Invalid RSA private key");
+
+        // Extract public key
+        let public_key = RsaPublicKey::from(&private_key);
+        let n_base64 = encode_b64(&public_key.n().to_bytes_be());
+        let e_base64 = encode_b64(&public_key.e().to_bytes_be());
+
+        // Construct JWK public key
+        let jwk_pub_key = JwkPublicKey {
+            n: n_base64,
+            e: e_base64,
+        };
+
+        // JWT Header
+        let header = json!({
+            "alg": "RS256",
+            "typ": "JWT"
+        });
+        let header_b64 = encode_b64(serde_json::to_string(&header).unwrap().as_bytes());
+
+        // JWT Payload (Claims)
         let claims = Claims {
             sub: "1234567890".to_string(),
             email: "user@example.com".to_string(),
             exp: 1893456000, // Far future expiry
-            aud: OidcProvider::AUDIENCE.to_string(),
-            iss: OidcProvider::ISSUER.to_string(),
+            aud: get_context().audience.clone(),
+            iss: get_context().issuer.clone(),
         };
+        let payload_b64 = encode_b64(serde_json::to_string(&claims).unwrap().as_bytes());
 
-        encode(
-            &Header::new(jsonwebtoken::Algorithm::RS256),
-            &claims,
-            &EncodingKey::from_rsa_pem(rsa_private_pem.as_bytes()).unwrap(),
-        )
-        .expect("Failed to encode test JWT")
+        // Create `header.payload` string
+        let message = format!("{}.{}", header_b64, payload_b64);
+
+        // Compute SHA256 hash
+        let hashed_msg = sha256_hash(message.as_bytes());
+
+        // Sign with RSA private key
+        let signature = private_key
+            .sign(Pkcs1v15Sign::new_unprefixed(), &hashed_msg)
+            .expect("RSA signing failed");
+        let signature_b64 = encode_b64(&signature);
+
+        // Return (JWK public key, JWT token)
+        (jwk_pub_key, format!("{}.{}", message, signature_b64))
     }
 
     #[test]
@@ -237,11 +257,11 @@ mod tests {
         let mut identity = OidcIdentity::default();
         let account = "test_account";
 
-        let jwt_token = generate_test_jwt();
-        let (n, e) = extract_n_e_from_rsa(); // Extract real `n` and `e`
+        let (jwk_public_key, jwt_token) = generate_test_jwt();
+        let context = get_context();
 
         assert!(identity
-            .register_identity(account, &n, &e, &jwt_token)
+            .register_identity(account, &context, &jwk_public_key, &jwt_token)
             .is_ok());
 
         let registered = identity.identities.get(account).unwrap();
@@ -253,25 +273,25 @@ mod tests {
         let mut identity = OidcIdentity::default();
         let account = "test_account";
 
-        let jwt_token = generate_test_jwt();
-        let (n, e) = extract_n_e_from_rsa();
+        let (jwk_public_key, jwt_token) = generate_test_jwt();
+        let context = get_context();
 
         identity
-            .register_identity(account, &n, &e, &jwt_token)
+            .register_identity(account, &context, &jwk_public_key, &jwt_token)
             .expect("Failed to register identity");
 
         assert!(identity
-            .verify_identity(account, 0, &n, &e, &jwt_token)
+            .verify_identity(account, 0, &context, &jwk_public_key, &jwt_token)
             .unwrap());
 
         // Nonce should now be 1, reusing old nonce should fail
         assert!(identity
-            .verify_identity(account, 0, &n, &e, &jwt_token)
+            .verify_identity(account, 0, &context, &jwk_public_key, &jwt_token)
             .is_err());
 
         // Now using updated nonce (1) should pass
         assert!(identity
-            .verify_identity(account, 1, &n, &e, &jwt_token)
+            .verify_identity(account, 1, &context, &jwk_public_key, &jwt_token)
             .unwrap());
     }
 
@@ -281,10 +301,11 @@ mod tests {
         let account = "test_account";
 
         let invalid_token = "invalid.jwt.token";
-        let (n, e) = extract_n_e_from_rsa();
+        let (jwk_public_key, _) = generate_test_jwt(); // Extract real `n` and `e`
+        let context = get_context();
 
         assert!(identity
-            .register_identity(account, &n, &e, invalid_token)
+            .register_identity(account, &context, &jwk_public_key, invalid_token)
             .is_err());
     }
 
@@ -293,16 +314,16 @@ mod tests {
         let mut identity = OidcIdentity::default();
         let account = "test_account";
 
-        let jwt_token = generate_test_jwt();
-        let (n, e) = extract_n_e_from_rsa();
+        let (jwk_public_key, jwt_token) = generate_test_jwt();
+        let context = get_context();
 
         identity
-            .register_identity(account, &n, &e, &jwt_token)
+            .register_identity(account, &context, &jwk_public_key, &jwt_token)
             .expect("Failed to register identity");
 
         let invalid_token = "invalid.jwt.token";
         assert!(identity
-            .verify_identity(account, 0, &n, &e, invalid_token)
+            .verify_identity(account, 0, &context, &jwk_public_key, invalid_token)
             .is_err());
     }
 }

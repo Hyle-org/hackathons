@@ -1,0 +1,18 @@
+[package]
+name = "oidc-identity"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+sdk = { workspace = true }
+oidc-provider = { path = "../provider" }
+serde = { version = "1.0", default-features = false, features = [
+    "derive",
+    "alloc",
+] }
+bincode = "2.0.0-rc.3"
+serde_json = "1.0"
+hex = "0.4.3"
+sha2 = { git = "https://github.com/risc0/RustCrypto-hashes", tag = "sha2-v0.10.8" }
+base64 = "0.22.1"
+rsa = "0.9.7"

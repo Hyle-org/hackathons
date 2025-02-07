@@ -1,18 +1,24 @@
-use alloc::{
-    format,
-    string::{String, ToString},
-};
-
-use hashbrown::hash_map::HashMap;
+use std::collections::HashMap;
 
 use anyhow::{anyhow, Context, Result};
-use jsonwebtoken::{decode, Algorithm, DecodingKey, Validation};
+use jsonwebtoken::decode_header;
 use openidconnect::{
     core::{
-        CoreAuthDisplay, CoreAuthPrompt, CoreAuthenticationFlow, CoreClient, CoreErrorResponseType,
-        CoreGenderClaim, CoreIdToken, CoreIdTokenClaims, CoreJsonWebKey,
-        CoreJweContentEncryptionAlgorithm, CoreJwsSigningAlgorithm, CoreProviderMetadata,
-        CoreRevocableToken, CoreTokenType, CoreUserInfoClaims,
+        CoreAuthDisplay,
+        CoreAuthPrompt,
+        CoreAuthenticationFlow,
+        CoreClient,
+        CoreErrorResponseType,
+        CoreGenderClaim,
+        CoreIdToken,
+        CoreIdTokenClaims,
+        CoreJsonWebKey,
+        CoreJweContentEncryptionAlgorithm,
+        CoreJwsSigningAlgorithm,
+        CoreProviderMetadata,
+        CoreRevocableToken,
+        CoreTokenType,
+        // CoreUserInfoClaims,
     },
     reqwest, AccessToken, AccessTokenHash, AuthorizationCode, Client, ClientId, ClientSecret,
     CsrfToken, EmptyAdditionalClaims, EmptyExtraTokenFields, EndpointMaybeSet, EndpointNotSet,
@@ -22,9 +28,11 @@ use openidconnect::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use tokio::io::AsyncWriteExt;
+use tokio::net::TcpListener;
+use url::Url;
 
-// use reqwest::Error;
-pub type OidcClient = Client<
+pub type AuthClient = Client<
     EmptyAdditionalClaims,
     CoreAuthDisplay,
     CoreGenderClaim,
@@ -54,23 +62,9 @@ pub type OidcClient = Client<
 >;
 
 #[derive(Debug, Clone)]
-pub struct OidcProvider {}
+pub struct OIDCClient {}
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct Claims {
-    pub sub: String,
-    pub email: String,
-    pub exp: usize,
-    pub aud: String,
-    pub iss: String,
-}
-
-// #[derive(Deserialize, Debug, Clone)]
-// struct JwksResponse {
-//     keys: Vec<Jwk>,
-// }
-
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Jwk {
     pub kid: String,
     pub n: String,
@@ -85,16 +79,13 @@ pub fn build_http_client() -> reqwest::Client {
     http_client
 }
 
-impl OidcProvider {
-    pub const ISSUER: &'static str = "https://accounts.google.com";
-    pub const AUDIENCE: &'static str = "your-client-id.apps.googleusercontent.com";
-
+impl OIDCClient {
     pub async fn build(
         issuer_url: String,
         client_id: String,
         client_secret: Option<String>,
         redirect_url: &str,
-    ) -> Result<OidcClient> {
+    ) -> Result<AuthClient> {
         let issuer_url_cleaned = issuer_url.trim_end_matches('/').to_string();
 
         let provider_metadata = CoreProviderMetadata::discover_async(
@@ -117,7 +108,7 @@ impl OidcProvider {
         Ok(client)
     }
 
-    pub fn generate_auth_url(client: &OidcClient) -> (String, CsrfToken, Nonce, PkceCodeVerifier) {
+    pub fn generate_auth_url(client: &AuthClient) -> (String, CsrfToken, Nonce, PkceCodeVerifier) {
         let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
         let (auth_url, csrf_token, nonce) = client
             .authorize_url(
@@ -135,7 +126,7 @@ impl OidcProvider {
     }
 
     pub async fn exchange_code_for_tokens(
-        client: &OidcClient,
+        client: &AuthClient,
         auth_code: String,
         pkce_verifier: PkceCodeVerifier,
     ) -> anyhow::Result<(CoreIdToken, AccessToken)> {
@@ -155,7 +146,7 @@ impl OidcProvider {
     }
 
     pub fn verify_id_token(
-        client: &OidcClient,
+        client: &AuthClient,
         id_token: &CoreIdToken,
         nonce: &Nonce,
     ) -> anyhow::Result<CoreIdTokenClaims> {
@@ -168,7 +159,7 @@ impl OidcProvider {
     }
 
     pub fn verify_access_token(
-        client: &OidcClient,
+        client: &AuthClient,
         id_token: &CoreIdToken,
         access_token: &AccessToken,
         claims: &CoreIdTokenClaims,
@@ -191,32 +182,22 @@ impl OidcProvider {
         }
     }
 
-    pub async fn fetch_user_info(
-        client: OidcClient,
-        access_token: AccessToken,
-        http_client: &reqwest::Client,
-    ) -> anyhow::Result<CoreUserInfoClaims> {
-        client
-            .user_info(access_token, None)?
-            .request_async(http_client)
-            .await
-            .map_err(|err| anyhow!("Failed requesting user info: {}", err))
-    }
+    // pub async fn fetch_user_info(
+    //     client: AuthClient,
+    //     access_token: AccessToken,
+    //     http_client: &reqwest::Client,
+    // ) -> anyhow::Result<CoreUserInfoClaims> {
+    //     client
+    //         .user_info(access_token, None)?
+    //         .request_async(http_client)
+    //         .await
+    //         .map_err(|err| anyhow!("Failed requesting user info: {}", err))
+    // }
 
-    pub fn verify_id_token_jwt(token: &str, decoding_key: &DecodingKey) -> Result<Claims, String> {
-        let mut validation = Validation::new(Algorithm::RS256);
-        validation.set_audience(&[OidcProvider::AUDIENCE]);
-        validation.set_issuer(&[OidcProvider::ISSUER]);
+    pub async fn fetch_jwks(jwk_url: &str) -> Result<HashMap<String, Jwk>, String> {
+        // let jwks_url = "https://www.googleapis.com/oauth2/v3/certs";
 
-        let token_data = decode::<Claims>(token, decoding_key, &validation)
-            .map_err(|e| format!("Token verification failed: {:?}", e))?;
-        Ok(token_data.claims)
-    }
-
-    pub async fn fetch_google_jwks() -> Result<HashMap<String, Jwk>, String> {
-        let jwks_url = "https://www.googleapis.com/oauth2/v3/certs";
-
-        let resp = reqwest::get(jwks_url)
+        let resp = reqwest::get(jwk_url)
             .await
             .map_err(|e| format!("HTTP request failed: {}", e))?;
 
@@ -241,6 +222,67 @@ impl OidcProvider {
             }
         }
         Ok(keys)
+    }
+
+    pub async fn match_jwks(access_token: &str, jwk_url: &str) -> Result<Jwk, String> {
+        // Fetch JWKS and return error if the request fails
+        let keys = OIDCClient::fetch_jwks(jwk_url)
+            .await
+            .map_err(|e| format!("Failed to fetch Google JWKS: {:?}", e))?;
+
+        // Decode the JWT header
+        let header = decode_header(access_token).map_err(|_| "Invalid JWT header".to_string())?;
+
+        // Ensure the `kid` exists in the JWT header
+        let kid = header
+            .kid
+            .ok_or("JWT header does not contain a Key ID (kid)".to_string())?;
+
+        // Retrieve (modulus `n`, exponent `e`) pair from the JWKS mapping
+        keys.get(&kid)
+            .cloned() // Clone since we're returning owned values
+            .ok_or_else(|| format!("Key ID '{}' not found in JWKS", kid))
+    }
+
+    /// Starts a temporary HTTP server to capture the access code from the redirect URL
+    pub async fn capture_access_code(redirect_url: &str) -> String {
+        let listener = TcpListener::bind(redirect_url)
+            .await
+            .expect("Failed to bind to port 8080");
+
+        println!("Waiting for OpenID provider to redirect with the access code...");
+
+        loop {
+            if let Ok((mut stream, _)) = listener.accept().await {
+                let mut buffer = [0; 1024];
+                let _ = stream.try_read(&mut buffer).expect("Failed to read stream");
+
+                let request = String::from_utf8_lossy(&buffer);
+                if let Some(start) = request.find("GET /?") {
+                    if let Some(end) = request[start..].find(' ') {
+                        let query = &request[start + 5..start + end];
+                        let url = Url::parse(&format!("{}/?{}", redirect_url, query))
+                            .expect("Failed to parse URL");
+
+                        if let Some(code) = url
+                            .query_pairs()
+                            .find(|(k, _)| k == "code")
+                            .map(|(_, v)| v.to_string())
+                        {
+                            // Send a success response to the browser
+                            let response =
+                            "HTTP/1.1 200 OK\r\nContent-Length: 25\r\n\r\nAuthentication Complete";
+                            stream
+                                .write_all(response.as_bytes())
+                                .await
+                                .expect("Failed to write response");
+
+                            return code;
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

@@ -1,0 +1,28 @@
+[package]
+name = "host"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+sdk = { workspace = true }
+client-sdk = { git = "https://github.com/hyle-org/hyle", package = "client-sdk", tag = "v0.9.0", features = [
+  "rest",
+  "risc0",
+] }
+oidc-identity = { path = "../contract" }
+oidc-provider = { path = "../provider" }
+
+methods-identity = { path = "../methods" }
+risc0-zkvm = { version = "1.2.0" }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+serde = "1.0"
+serde_json = "1.0.133"
+clap = { version = "4.5.23", features = ["derive"] }
+bincode = { version = "2.0.0-rc.3" }
+hex = "0.4.3"
+anyhow = "1.0.95"
+tokio = { version = "1.42.0", features = ["full", "tracing"] }
+openidconnect = { version = "4.0.0" }
+dotenv = { version = "0.15.0" }
+jsonwebtoken = "9"
+url = { version = "2.5.4" }
