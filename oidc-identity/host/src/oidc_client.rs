@@ -28,7 +28,7 @@ use openidconnect::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 use url::Url;
 
@@ -183,13 +183,12 @@ impl OIDCClient {
     }
 
     // pub async fn fetch_user_info(
-    //     client: AuthClient,
-    //     access_token: AccessToken,
-    //     http_client: &reqwest::Client,
+    //     client: &AuthClient,
+    //     access_token: &AccessToken,
     // ) -> anyhow::Result<CoreUserInfoClaims> {
     //     client
-    //         .user_info(access_token, None)?
-    //         .request_async(http_client)
+    //         .user_info(access_token.clone(), None)?
+    //         .request_async(&build_http_client())
     //         .await
     //         .map_err(|err| anyhow!("Failed requesting user info: {}", err))
     // }
@@ -246,37 +245,48 @@ impl OIDCClient {
 
     /// Starts a temporary HTTP server to capture the access code from the redirect URL
     pub async fn capture_access_code(redirect_url: &str) -> String {
-        let listener = TcpListener::bind(redirect_url)
-            .await
-            .expect("Failed to bind to port 8080");
+        let parsed_url = Url::parse(redirect_url).expect("Failed to parse URL");
+        let socket_addr = format!(
+            "{}:{}",
+            parsed_url.host_str().expect("Invalid host"),
+            parsed_url.port_or_known_default().expect("Invalid port")
+        );
 
-        println!("Waiting for OpenID provider to redirect with the access code...");
+        let listener = TcpListener::bind(&socket_addr)
+            .await
+            .unwrap_or_else(|e| panic!("Failed to bind to {:?}: {}", redirect_url, e));
 
         loop {
             if let Ok((mut stream, _)) = listener.accept().await {
-                let mut buffer = [0; 1024];
-                let _ = stream.try_read(&mut buffer).expect("Failed to read stream");
+                let mut buffer = vec![0; 4096]; // Bigger buffer for large OAuth redirects
+                let _ = stream
+                    .read(&mut buffer)
+                    .await
+                    .expect("Failed to read stream");
 
                 let request = String::from_utf8_lossy(&buffer);
-                if let Some(start) = request.find("GET /?") {
-                    if let Some(end) = request[start..].find(' ') {
-                        let query = &request[start + 5..start + end];
-                        let url = Url::parse(&format!("{}/?{}", redirect_url, query))
-                            .expect("Failed to parse URL");
+                println!("Received request:\n{}", request);
+
+                // Extract first line from request
+                if let Some(first_line) = request.lines().next() {
+                    let request_path = first_line.split_whitespace().nth(1); // Extracts "/callback?..."
+                    if let Some(query_part) = request_path {
+                        let full_url = format!("{}{}", redirect_url, query_part);
+                        let url = Url::parse(&full_url).expect("Failed to parse URL");
 
                         if let Some(code) = url
                             .query_pairs()
                             .find(|(k, _)| k == "code")
                             .map(|(_, v)| v.to_string())
                         {
-                            // Send a success response to the browser
-                            let response =
-                            "HTTP/1.1 200 OK\r\nContent-Length: 25\r\n\r\nAuthentication Complete";
+                            // Send success response
+                            let response = "HTTP/1.1 200 OK\r\nContent-Length: 25\r\n\r\nAuthentication Complete";
                             stream
                                 .write_all(response.as_bytes())
                                 .await
                                 .expect("Failed to write response");
 
+                            println!("Extracted Auth Code: {}", code);
                             return code;
                         }
                     }

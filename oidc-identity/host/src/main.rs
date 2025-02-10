@@ -95,12 +95,11 @@ async fn main() {
             println!("Identity {:?}", identity.clone());
 
             let client_secret = &identity_provider.get_client_secret(&cli.provider);
-
             let oidc_client = OIDCClient::build(
                 identity_provider.issuer_url.to_string(),
                 identity_provider.audience_url.to_string(),
                 Some(client_secret.to_string()),
-                &config.server.server_url,
+                &format!("{}/callback", config.server.server_url),
             )
             .await
             .expect("Failed to build provider");
@@ -125,18 +124,22 @@ async fn main() {
                     .expect("Failed to verify access token");
 
             let jwk_res = OIDCClient::match_jwks(
-                &access_token.secret(),
-                "https://www.googleapis.com/oauth2/v3/certs",
+                &id_token.to_string(),
+                &identity_provider.jwk_public_key_url,
             )
             .await
             .expect("Failed to match google jwks");
+
+            println!("{:?}", jwk_res);
+
+            let identity_id = format!("{}.{}", claims.subject().to_string(), config.contract.name);
 
             // ----
             // Build the blob transaction
             // ----
 
             let action = IdentityAction::RegisterIdentity {
-                account: identity.clone(),
+                account: identity_id.clone(),
                 jwk_pub_key: JwkPublicKey {
                     n: jwk_res.n,
                     e: jwk_res.e,
@@ -154,7 +157,7 @@ async fn main() {
                 ),
             }];
             let blob_tx = BlobTransaction {
-                identity: identity.into(),
+                identity: identity_id.into(),
                 blobs: blobs.clone(),
             };
 
@@ -171,7 +174,7 @@ async fn main() {
                 initial_state: initial_state.as_digest(),
                 identity: blob_tx.identity,
                 tx_hash: blob_tx_hash,
-                private_input: access_token.secret().clone().into_bytes().to_vec(),
+                private_input: id_token.to_string().clone().into_bytes().to_vec(),
                 tx_ctx: None,
                 blobs: blobs.clone(),
                 index: sdk::BlobIndex(0),
@@ -191,6 +194,8 @@ async fn main() {
         }
         Commands::VerifyIdentity { identity, nonce } => {
             {
+                println!("Identity {:?}", identity.clone());
+
                 // Fetch the initial state from the node
                 let initial_state: OidcIdentity = client
                     .get_contract(&contract_name.clone().into())
@@ -235,7 +240,7 @@ async fn main() {
                 .expect("Failed to verify access token");
 
                 let jwk_res = OIDCClient::match_jwks(
-                    &access_token.secret(),
+                    &id_token.to_string(),
                     &identity_provider.jwk_public_key_url,
                 )
                 .await
@@ -245,8 +250,11 @@ async fn main() {
                 // Build the blob transaction
                 // ----
 
+                let identity_id =
+                    format!("{}.{}", claims.subject().to_string(), config.contract.name);
+
                 let action = IdentityAction::VerifyIdentity {
-                    account: identity.clone(),
+                    account: identity_id.clone(),
                     nonce,
                     jwk_pub_key: JwkPublicKey {
                         n: jwk_res.n,
@@ -265,7 +273,7 @@ async fn main() {
                     ),
                 }];
                 let blob_tx = BlobTransaction {
-                    identity: identity.into(),
+                    identity: identity_id.into(),
                     blobs: blobs.clone(),
                 };
 
@@ -282,7 +290,7 @@ async fn main() {
                     initial_state: initial_state.as_digest(),
                     identity: blob_tx.identity,
                     tx_hash: blob_tx_hash.clone(),
-                    private_input: access_token.secret().clone().into_bytes().to_vec(),
+                    private_input: id_token.to_string().clone().into_bytes().to_vec(),
                     tx_ctx: None,
                     blobs: blobs.clone(),
                     index: sdk::BlobIndex(0),

@@ -3,19 +3,14 @@ name = "oidc_identity"
 
 [server]
 host = "http://localhost:4321"
-server_url = "http://localhost:8000"
+server_url = "http://127.0.0.1:3001"
 
 [identity_providers]
 
 [identity_providers.google]
 issuer_url = "https://accounts.google.com"
-audience_url = "https://myapp.example.com"
+audience_url = "787585631619-alqd2kq70bb6imislm32bf75rn0sb8so.apps.googleusercontent.com"
 jwk_public_key_url = "https://www.googleapis.com/oauth2/v3/certs"
-
-[identity_providers.github]
-issuer_url = "https://github.com/login/oauth"
-audience_url = "https://myapp.example.com"
-jwk_public_key_url = "https://api.github.com/meta"
 
 [identity_providers.auth0]
 issuer_url = "https://your-auth0-domain.com/"
