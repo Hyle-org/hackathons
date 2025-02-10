@@ -26,3 +26,4 @@ openidconnect = { version = "4.0.0" }
 dotenv = { version = "0.15.0" }
 jsonwebtoken = "9"
 url = { version = "2.5.4" }
+config = "0.13.4"

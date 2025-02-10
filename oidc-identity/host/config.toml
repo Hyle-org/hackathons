@@ -1,0 +1,23 @@
+[contract]
+name = "oidc_identity"
+
+[server]
+host = "http://localhost:4321"
+server_url = "http://localhost:8000"
+
+[identity_providers]
+
+[identity_providers.google]
+issuer_url = "https://accounts.google.com"
+audience_url = "https://myapp.example.com"
+jwk_public_key_url = "https://www.googleapis.com/oauth2/v3/certs"
+
+[identity_providers.github]
+issuer_url = "https://github.com/login/oauth"
+audience_url = "https://myapp.example.com"
+jwk_public_key_url = "https://api.github.com/meta"
+
+[identity_providers.auth0]
+issuer_url = "https://your-auth0-domain.com/"
+audience_url = "https://api.example.com"
+jwk_public_key_url = "https://your-auth0-domain.com/.well-known/jwks.json"
