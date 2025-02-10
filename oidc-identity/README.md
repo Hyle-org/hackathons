@@ -1,66 +1,103 @@
-# Simple Identity risc0 example
+# OIDC Identity Authentication App
 
-On Hylé, any smart contract can serve as proof of identity. This flexibility allows you to register your preferred identity source as a smart contract for account identification. Hylé also ships [a native `hydentity` contract](https://github.com/Hyle-org/hyle/tree/main/contracts/hydentity) for simplicity.
+This project provides an OpenID Connect (OIDC) authentication system that supports multiple identity providers. It allows users to authenticate using various OIDC providers such as **Google, Auth0** etc., with flexible configuration via `config.toml` and secrets stored securely in an `.env` file.
 
-This is a Risc0 example called simple_identity.
+## **Prerequisites**
 
-## Prerequisites
+- [Install Rust](https://www.rust-lang.org/tools/install) (requires `rustup` and Cargo).
+- Install **RISC Zero** (if using a RISC Zero verifier).
+- Ensure you have an **OIDC identity provider** set up (e.g., Google, GitHub, or Auth0).
+- Create an `.env` file to store sensitive credentials securely.
 
-- [Install Rust](https://www.rust-lang.org/tools/install) (you'll need `rustup` and Cargo).
-- For our example, [install RISC Zero](https://dev.risczero.com/api/zkvm/install).
-- [Start a single-node devnet](https://docs.hyle.eu/developers/quickstart/devnet/). We recommend using [dev-mode](https://dev.risczero.com/api/generating-proofs/dev-mode) with `-e RISC0_DEV_MODE=1` for faster iterations during development.
+---
 
-## Quickstart
+## **Configuration Setup**
 
-### Build and register the identity contract
+### **🔧 Environment Variables (`.env` File)**
 
-To build all methods and register the smart contract on the local node [from the source](https://github.com/Hyle-org/examples/blob/simple_erc20/simple-token/host/src/main.rs), run:
+To keep client secrets secure, store them in an `.env` file in the root directory:
 
-```bash
+```ini
+# .env file
+OIDC_[PROVIDER]__CLIENT_SECRET=your_oidc_client_secret_here
+```
+
+### **🔧 Configuring Identity Providers (`config.toml` File)**
+
+Define the **identity providers** and application settings in `config.toml`:
+
+```toml
+[contract]
+name = "oidc_identity"
+
+[server]
+host = "http://localhost:4321"
+server = "http://localhost:8000"
+
+[identity_providers]
+[identity_providers.google]
+issuer_url = "https://accounts.google.com"
+audience_url = "https://myapp.example.com"
+client_secret = "your_google_client_secret"
+jwk_public_key_url = "https://www.googleapis.com/oauth2/v3/certs"
+
+[identity_providers.auth0]
+issuer_url = "https://your-auth0-domain.com/"
+audience_url = "https://api.example.com"
+client_secret = "your_auth0_client_secret"
+jwk_public_key_url = "https://your-auth0-domain.com/.well-known/jwks.json"
+```
+
+---
+
+## **Quickstart**
+
+### **1️⃣ Register the OIDC Identity Contract**
+
+Run the following command to register the identity contract on the local node:
+
+```sh
 cargo run -- register-contract
 ```
 
-The expected output is `📝 Registering new contract simple_identity`.
+### **2️⃣ Authenticate Using an OIDC Provider**
 
-### Register an account / Sign up
-
-To register an account with a username (`alice`) and password (`abc123`), execute:
+To authenticate a user using Google:
 
 ```sh
-cargo run -- register-identity alice.simple_identity abc123
+cargo run -- register-identity --provider google
 ```
 
-The node's logs will display:
+Expected output:
 
-```bash
-INFO hyle_verifiers: ✅ Risc0 proof verified.
+```sh
+Waiting for OpenID provider to redirect with the access code...
 ```
+
+Then you open the url and the client automatically receives the auth code from the google oidc provider and proceeds to follow the authentication sequence.
 
 ### Verify identity / Login
 
-To verify `alice`'s identity:
+To verify user identity:
 
-```bash
-cargo run -- verify-identity alice.simple_identity abc123 0
+```sh
+cargo run -- verify-identity --provider google
 ```
 
-This command will:
+This also follows the authentication sequence
 
-1. Send a blob transaction to verify `alice`'s identity.
-1. Generate a ZK proof of that identity. It will only be valid once, thus the inclusion of a nonce.
-1. Send the proof to the devnet.
+### Authentication Sequence
 
-Upon reception of the proof, the node will:
+- Extract the header, payload, and signature from the JWT.
+- Decode the signature using Base64-URL decoding.
+- Compute the hash of the header.payload using the specified algorithm (e.g., RS256 → SHA256).
+- Verify the signature using the public key from the OIDC provider's JWK.
+- Upon successful verification, the system will:
+- Validate the issuer (iss) and audience (aud) claims.
+- Ensure the JWT has not expired.
+- Return the decoded claims for further processing.
 
-1. Verify the proof.
-1. Settle the blob transaction.
-1. Update the contract's state.
-
-The node's logs will display:
-
-```bash
-INFO hyle_verifiers: ✅ Risc0 proof verified.
-```
+---
 
 ### Executing the Project Locally in Development Mode
 
@@ -106,20 +143,25 @@ project_name
 ├── contract 
 │   ├── Cargo.toml
 │   └── src
-│       └── lib.rs         <-- [Contract code goes here, common to host & guest]
+│       ├── jwt.rs         <-- [Jwt authentication]
+│       └── lib.rs         <-- [Contract code, common to host & guest]
 ├── host
 │   ├── Cargo.toml
 │   └── src
-│       └── main.rs        <-- [Host code goes here]
-└── methods
+│       └── main.rs        <-- [Host code]
+├── methods
+│    ├── Cargo.toml
+│    ├── build.rs
+│    ├── guest
+│    │   ├── Cargo.toml
+│    │   └── src
+│    │       └── main.rs    <-- [Guest code]
+│    └── src
+│        └── lib.rs
+└── provider
     ├── Cargo.toml
-    ├── build.rs
-    ├── guest
-    │   ├── Cargo.toml
-    │   └── src
-    │       └── main.rs    <-- [Guest code goes here]
     └── src
-        └── lib.rs
+        └── lib.rs          <-- [OIDC Provider code]
 ```
 
 <!--[bonsai access]: https://bonsai.xyz/apply-->

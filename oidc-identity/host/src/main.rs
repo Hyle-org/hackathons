@@ -35,8 +35,8 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     RegisterContract {},
-    RegisterIdentity { identity: String },
-    VerifyIdentity { identity: String, nonce: u32 },
+    RegisterIdentity {},
+    VerifyIdentity { nonce: u32 },
 }
 
 #[tokio::main]
@@ -82,7 +82,7 @@ async fn main() {
 
             println!("✅ Register contract tx sent. Tx hash: {}", res);
         }
-        Commands::RegisterIdentity { identity } => {
+        Commands::RegisterIdentity {} => {
             // Fetch the initial state from the node
             let initial_state: OidcIdentity = client
                 .get_contract(&contract_name.clone().into())
@@ -92,7 +92,6 @@ async fn main() {
                 .into();
 
             println!("Initial state {:?}", initial_state.clone());
-            println!("Identity {:?}", identity.clone());
 
             let client_secret = &identity_provider.get_client_secret(&cli.provider);
             let oidc_client = OIDCClient::build(
@@ -192,10 +191,8 @@ async fn main() {
             let proof_tx_hash = client.send_tx_proof(&proof_tx).await.unwrap();
             println!("✅ Proof tx sent. Tx hash: {}", proof_tx_hash);
         }
-        Commands::VerifyIdentity { identity, nonce } => {
+        Commands::VerifyIdentity { nonce } => {
             {
-                println!("Identity {:?}", identity.clone());
-
                 // Fetch the initial state from the node
                 let initial_state: OidcIdentity = client
                     .get_contract(&contract_name.clone().into())
