@@ -9,7 +9,8 @@ import {
 import { UserInputEventType } from '@metamask/snaps-sdk';
 import { Box, Heading, Text, Divider, Button } from '@metamask/snaps-sdk/jsx';
 
-import { contract_name, getIdentity, HYLE_NODE_URL, registerIdentity, transfer } from './hyle';
+import { Blob, BlobTransaction, contract_name, getIdentity, HYLE_NODE_URL, registerIdentity, transfer } from './hyle';
+import { deserializeERC20Action, deserializeIdentityAction, ERC20Action } from './model';
 
 async function getAccount() {
   // Retrieve stored account
@@ -204,33 +205,62 @@ export const onUserInput: OnUserInputHandler = async ({ id, event }) => {
   }
 };
 
-//export const onSignature: OnSignatureHandler = async ({
-//  signature,
-//}) => {
-//  const data = fromHexMessage(signature.data);
-//  console.log("data", data);
-//
-//  let tx;
-//
-//  try {
-//    const response = await fetch(`${HYLE_NODE_URL}/v1/unsettled_tx/${data}`, {
-//      method: 'GET',
-//      headers: { 'Content-Type': 'application/json' },
-//    });
-//
-//    tx = await response.json();
-//  } catch (error) {
-//    tx = "Can't fetch transaction on Hyle node. No insights available.";
-//  }
-//
-//  return {
-//    content: (
-//      <Box>
-//        <Heading>Hyle message signing:</Heading>
-//        <Text>Message signed: {data}</Text>
-//        <Text>Transaction: {JSON.stringify(tx)}</Text>
-//      </Box>
-//    ),
-//    severity: SeverityLevel.Critical,
-//  };
-//};
+export const onSignature: OnSignatureHandler = async ({
+  signature,
+}) => {
+  if (typeof signature.data !== 'string') {
+    return {
+      content: <Text>Invalid signature data</Text>,
+      severity: SeverityLevel.Critical,
+    };
+  }
+  const { blobs }: { blobs: Array<Blob> } = JSON.parse(fromHexMessage(signature.data));
+
+  const renderInsight = (blob: Blob) => {
+    console.log("render", blob);
+    switch (blob.contract_name) {
+      case "hyllar":
+      case "hyllar2":
+        {
+          const action = deserializeERC20Action(blob);
+          return erc20ActionToInsight(action);
+        }
+      default:
+        return (<Text key="unknown">Unknown contract {blob.contract_name} </Text>);
+    }
+  }
+
+  return {
+    content: (
+      <Box>
+        {blobs.map((blob, index) => (
+          <Box key={`${blob.contract_name}-${index}`} >
+            <Divider />
+            <Heading>Blob #{index.toString()}:</Heading>
+            <Text>Contract: {blob.contract_name}</Text>
+            <Text>Data: {renderInsight(blob)}</Text>
+          </Box>
+        ))
+        }
+      </Box >
+    ),
+    severity: SeverityLevel.Critical,
+  };
+};
+
+export const erc20ActionToInsight = (action: ERC20Action): string => {
+  if ("TotalSupply" in action) {
+    return "TotalSupply";
+  } else if ("BalanceOf" in action) {
+    return `BalanceOf { account: ${action.BalanceOf.account} }`;
+  } else if ("Transfer" in action) {
+    return `Transfer { recipient: ${action.Transfer.recipient}, amount: ${action.Transfer.amount} }`;
+  } else if ("TransferFrom" in action) {
+    return `TransferFrom { sender: ${action.TransferFrom.sender}, recipient: ${action.TransferFrom.recipient}, amount: ${action.TransferFrom.amount} }`;
+  } else if ("Approve" in action) {
+    return `Approve { spender: ${action.Approve.spender}, amount: ${action.Approve.amount} }`
+  } else if ("Allowance" in action) {
+    return `Allowance { owner: ${action.Allowance.owner}, spender: ${action.Allowance.spender} }`;
+  }
+  return "Unknown ERC20Action"
+};
