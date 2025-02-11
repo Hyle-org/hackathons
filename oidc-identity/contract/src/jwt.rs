@@ -9,12 +9,6 @@ use rsa::{
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct JwtHeader {
-    pub alg: String,
-    pub kid: Option<String>, // Key ID (helps pick the correct public key)
-}
-
-#[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
     pub sub: String,
     pub email: String,
