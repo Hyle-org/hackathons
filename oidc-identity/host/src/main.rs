@@ -207,7 +207,7 @@ async fn main() {
                     identity_provider.issuer_url.to_string(),
                     identity_provider.audience_url.to_string(),
                     Some(client_secret.to_string()),
-                    &config.server.server_url,
+                    &format!("{}/callback", config.server.server_url),
                 )
                 .await
                 .expect("Failed to build provider");

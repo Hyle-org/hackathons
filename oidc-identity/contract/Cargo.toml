@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+rsa = { version = "0.9.7", features = ["sha2"] }
 sdk = { workspace = true }
 oidc-provider = { path = "../provider" }
 serde = { version = "1.0", default-features = false, features = [
@@ -15,4 +16,4 @@ serde_json = "1.0"
 hex = "0.4.3"
 sha2 = { git = "https://github.com/risc0/RustCrypto-hashes", tag = "sha2-v0.10.8" }
 base64 = "0.22.1"
-rsa = "0.9.7"
+jsonwebkey = { version = "0.3.4", features = ["pkcs-convert"] }

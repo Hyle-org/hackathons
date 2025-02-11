@@ -194,8 +194,6 @@ impl OIDCClient {
     // }
 
     pub async fn fetch_jwks(jwk_url: &str) -> Result<HashMap<String, Jwk>, String> {
-        // let jwks_url = "https://www.googleapis.com/oauth2/v3/certs";
-
         let resp = reqwest::get(jwk_url)
             .await
             .map_err(|e| format!("HTTP request failed: {}", e))?;
