@@ -1,5 +1,7 @@
 // lib/hyle.ts
 
+import { IdentityAction, serialize } from "./model";
+
 // Basic types from SDK
 export type TxHash = string;
 export type BlockHeight = number;
@@ -50,25 +52,33 @@ export interface ProofTransaction {
   proof: number[];
 }
 
-export async function registerIdentity(signature: string, ethAddr: string) {
-  const HYLE_NODE_URL = 'http://localhost:4321';
-  const HYLE_PROVER_URL = 'http://localhost:3000';
-  const contract_name: Identity = 'metamask_identity';
+export const contract_name: Identity = 'mmid';
+export const HYLE_NODE_URL = 'http://localhost:4321';
+const HYLE_PROVER_URL = 'http://localhost:4000';
 
-  console.log('HYLE_NODE_URL', HYLE_NODE_URL);
-  console.log(contract_name);
+export async function getIdentity(): Promise<string> {
+  const ethAddr = await ethereum.request({
+    method: 'eth_requestAccounts',
+  });
+
+  return ethAddr + '.' + contract_name;
+}
+
+export async function registerIdentity(signature: string) {
+  const ethAddr = await ethereum.request({
+    method: 'eth_requestAccounts',
+  });
 
   const identity = ethAddr + '.' + contract_name;
 
   const action: IdentityAction = {
-    type: 'RegisterIdentity',
-    account: identity,
+    RegisterIdentity: { account: identity },
   };
 
   // Create the blob
   const blob: Blob = {
     contract_name: contract_name,
-    data: [...new TextEncoder().encode(JSON.stringify(action))],
+    data: serialize(action),
   };
 
   // Create the blob transaction
@@ -77,7 +87,7 @@ export async function registerIdentity(signature: string, ethAddr: string) {
     blobs: [blob],
   };
 
-  console.log('blobTx generated');
+  console.log('blobTx generated', blobTx);
 
   // Send blob transaction
   const response = await fetch(`${HYLE_NODE_URL}/v1/tx/send/blob`, {

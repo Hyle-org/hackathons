@@ -1,4 +1,4 @@
-use bincode::{Decode, Encode};
+use borsh::{BorshDeserialize, BorshSerialize};
 use hex::{decode, encode};
 use k256::ecdsa::{RecoveryId, Signature, VerifyingKey};
 use sdk::{identity_provider::IdentityVerification, Digestable, RunResult};
@@ -6,6 +6,9 @@ use serde::{Deserialize, Serialize};
 use sha2::Digest;
 use sha3::Keccak256;
 use std::collections::BTreeMap;
+
+#[cfg(feature = "client")]
+pub mod client;
 
 /// Entry point of the contract's logic
 pub fn execute(contract_input: sdk::ContractInput) -> RunResult<IdentityContractState> {
@@ -16,7 +19,7 @@ pub fn execute(contract_input: sdk::ContractInput) -> RunResult<IdentityContract
     let action = action.ok_or("Failed to parse action")?;
 
     // Parse initial state
-    let state: IdentityContractState = input.initial_state.clone().into();
+    let state: IdentityContractState = input.initial_state.clone().try_into()?;
 
     // Extract private information
     let signature = core::str::from_utf8(&input.private_input).unwrap();
@@ -26,14 +29,14 @@ pub fn execute(contract_input: sdk::ContractInput) -> RunResult<IdentityContract
 }
 
 /// Struct to hold account's information
-#[derive(Encode, Decode, Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
 pub struct AccountInfo {
     pub pub_key_hash: String,
     pub nonce: u32,
 }
 
 /// The state of the contract, that is totally serialized on-chain
-#[derive(Encode, Decode, Serialize, Deserialize, Debug, Clone)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Debug, Clone)]
 pub struct IdentityContractState {
     identities: BTreeMap<String, AccountInfo>,
 }
@@ -62,7 +65,7 @@ impl IdentityVerification for IdentityContractState {
         private_input: &str,
     ) -> Result<(), &'static str> {
         // Parse the signature
-        let pub_key = account.trim_end_matches(".metamask_identity");
+        let pub_key = account.trim_end_matches(".mmid");
 
         let valid = k256_verifier(pub_key, private_input, "hyle registration");
 
@@ -134,18 +137,15 @@ impl Default for IdentityContractState {
 /// while storing the full-state off-chain
 impl Digestable for IdentityContractState {
     fn as_digest(&self) -> sdk::StateDigest {
-        sdk::StateDigest(
-            bincode::encode_to_vec(self, bincode::config::standard())
-                .expect("Failed to encode Balances"),
-        )
+        sdk::StateDigest(borsh::to_vec(&self).expect("Failed to encode Balances"))
     }
 }
-impl From<sdk::StateDigest> for IdentityContractState {
-    fn from(state: sdk::StateDigest) -> Self {
-        let (state, _) = bincode::decode_from_slice(&state.0, bincode::config::standard())
-            .map_err(|_| "Could not decode identity state".to_string())
-            .unwrap();
-        state
+
+impl TryFrom<sdk::StateDigest> for IdentityContractState {
+    type Error = String;
+
+    fn try_from(state: sdk::StateDigest) -> Result<Self, Self::Error> {
+        borsh::from_slice(&state.0).map_err(|_| "Could not decode identity state".to_string())
     }
 }
 

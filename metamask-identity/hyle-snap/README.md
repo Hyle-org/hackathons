@@ -40,7 +40,7 @@ On installation, the Snap retrieves and stores the user's Ethereum account. If n
 
 ### Signing and Registering Identity
 
-Make sure Hyle node is running (localhost:4321) as well as metamask-identity server (localhost:3000) before starting.
+Make sure Hyle node is running (localhost:4321) as well as metamask-identity server (localhost:4000) before starting.
 
 1. Open the Snap's home page.
 2. Click the `Register & Sign` button.

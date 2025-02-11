@@ -58,6 +58,7 @@
     }
   },
   "dependencies": {
-    "@metamask/snaps-sdk": "^6.17.0"
+    "@metamask/snaps-sdk": "^6.17.0",
+    "borsher": "^3.6.0"
   }
 }

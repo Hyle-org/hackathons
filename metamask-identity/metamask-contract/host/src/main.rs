@@ -31,7 +31,7 @@ struct Cli {
     #[arg(long, default_value = "http://localhost:4321")]
     pub host: String,
 
-    #[arg(long, default_value = "metamask_identity")]
+    #[arg(long, default_value = "mmid")]
     pub contract_name: String,
 }
 
@@ -93,7 +93,8 @@ async fn main() {
                 .await
                 .unwrap()
                 .state
-                .into();
+                .try_into()
+                .unwrap();
 
             println!("Initial state {:?}", initial_state.clone());
             println!("Public key {:?}", identity.clone());
@@ -105,10 +106,8 @@ async fn main() {
                 account: identity.clone(),
             };
 
-            let blob_data: sdk::BlobData = sdk::BlobData(
-                bincode::encode_to_vec(action, bincode::config::standard())
-                    .expect("failed to encode BlobData"),
-            );
+            let blob_data: sdk::BlobData =
+                sdk::BlobData(borsh::to_vec(&action).expect("failed to encode BlobData"));
 
             let blobs = vec![sdk::Blob {
                 contract_name: contract_name.clone().into(),
@@ -166,7 +165,8 @@ async fn main() {
                     .await
                     .unwrap()
                     .state
-                    .into();
+                    .try_into()
+                    .unwrap();
                 // ----
                 // Build the blob transaction
                 // ----
@@ -177,10 +177,7 @@ async fn main() {
                 };
                 let blobs = vec![sdk::Blob {
                     contract_name: contract_name.clone().into(),
-                    data: sdk::BlobData(
-                        bincode::encode_to_vec(action, bincode::config::standard())
-                            .expect("failed to encode BlobData"),
-                    ),
+                    data: sdk::BlobData(borsh::to_vec(&action).expect("failed to encode BlobData")),
                 }];
                 let blob_tx = BlobTransaction {
                     identity: public_key.into(),
@@ -227,7 +224,8 @@ async fn main() {
                     .await
                     .unwrap()
                     .state
-                    .into();
+                    .try_into()
+                    .unwrap();
                 // ----
                 // Build the blob transaction
                 // ----
@@ -237,10 +235,7 @@ async fn main() {
                 };
                 let blobs = vec![sdk::Blob {
                     contract_name: contract_name.clone().into(),
-                    data: sdk::BlobData(
-                        bincode::encode_to_vec(action, bincode::config::standard())
-                            .expect("failed to encode BlobData"),
-                    ),
+                    data: sdk::BlobData(borsh::to_vec(&action).expect("failed to encode BlobData")),
                 }];
                 let blob_tx = BlobTransaction {
                     identity: public_key.into(),
@@ -313,7 +308,7 @@ async fn run_server() {
 
     let app = Router::new().route("/prove", post(prove)).layer(cors);
 
-    let addr = env::var("HYLEOOF_HOST").unwrap_or_else(|_| "127.0.0.1:3000".to_string());
+    let addr = env::var("HYLEOOF_HOST").unwrap_or_else(|_| "127.0.0.1:4000".to_string());
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
     println!("Server running on {}", addr);
 
@@ -325,7 +320,8 @@ async fn run_server() {
 // Handler for /prove endpoint
 async fn prove(Json(request): Json<ProveRequest>) -> Json<TxHash> {
     let cli = Cli::parse();
-    let client = client_sdk::rest_client::NodeApiHttpClient::new(cli.host).unwrap();
+    let client = client_sdk::rest_client::NodeApiHttpClient::new(cli.host.clone()).unwrap();
+    let indexer = client_sdk::rest_client::IndexerApiHttpClient::new(cli.host).unwrap();
     let prover = Risc0Prover::new(GUEST_ELF);
 
     let initial_state: IdentityContractState = client
@@ -333,25 +329,25 @@ async fn prove(Json(request): Json<ProveRequest>) -> Json<TxHash> {
         .await
         .unwrap()
         .state
-        .into();
+        .try_into()
+        .unwrap();
+
+    let blobs: Vec<sdk::Blob> = indexer
+        .get_blobs_by_tx_hash(&request.tx_hash)
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|blob| sdk::Blob {
+            contract_name: blob.contract_name.clone().into(),
+            data: sdk::BlobData(blob.data),
+        })
+        .collect();
 
     println!("Initial state {:?}", initial_state.clone());
     println!("identity {:?}", request.identity.clone());
     println!("signature {:?}", request.signature.clone());
     println!("contract_name {:?}", request.contract_name.clone());
     println!("tx_hash {:?}", request.tx_hash.clone());
-
-    let action = sdk::identity_provider::IdentityAction::RegisterIdentity {
-        account: request.identity.to_string(),
-    };
-    println!("action {:?}", action.clone());
-    let blobs = vec![sdk::Blob {
-        contract_name: request.contract_name.clone().into(),
-        data: sdk::BlobData(
-            bincode::encode_to_vec(action, bincode::config::standard())
-                .expect("failed to encode BlobData"),
-        ),
-    }];
 
     let inputs = ContractInput {
         initial_state: initial_state.as_digest(),
@@ -364,6 +360,11 @@ async fn prove(Json(request): Json<ProveRequest>) -> Json<TxHash> {
     };
 
     println!("inputs {:?}", inputs.clone());
+
+    let res = contract_identity::execute(inputs.clone());
+    if let Err(e) = res {
+        println!("Error: {:?}", e);
+    }
 
     let proof = prover.prove(inputs).await.unwrap();
     let proof_tx = ProofTransaction {

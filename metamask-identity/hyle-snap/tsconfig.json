@@ -2,8 +2,13 @@
   "compilerOptions": {
     "esModuleInterop": true,
     "exactOptionalPropertyTypes": true,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
     "forceConsistentCasingInFileNames": true,
-    "lib": ["ES2020", "DOM"],
+    "lib": [
+      "ES2020",
+      "DOM"
+    ],
     "module": "CommonJS",
     "moduleResolution": "node",
     "noEmit": true,

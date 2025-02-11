@@ -20,14 +20,14 @@ To build all methods and register the smart contract on the local node [from the
 cargo run -- register-contract
 ```
 
-The expected output is `📝 Registering new contract metamask_identity`.
+The expected output is `📝 Registering new contract mmid`.
 
 ### Register an account / Sign up
 
 To register an account with a public key (`0x437aa724e898f0ba345852bbbc2e416d9346e1c9`) and signature, execute:
 
 ```sh
-RISC0_DEV_MODE=1 cargo run -- register-identity 0x437aa724e898f0ba345852bbbc2e416d9346e1c9.metamask_identity 0x3279f925d976ddfc012a95157f87054717610b4fa08028913ab3139f552e76342d609c11acbca164fb9c64fb5553db3fe34c826c0084fd6bc934dcd154993b0a1b
+RISC0_DEV_MODE=1 cargo run -- register-identity 0x437aa724e898f0ba345852bbbc2e416d9346e1c9.mmid 0x3279f925d976ddfc012a95157f87054717610b4fa08028913ab3139f552e76342d609c11acbca164fb9c64fb5553db3fe34c826c0084fd6bc934dcd154993b0a1b
 ```
 
 Note that signature needs to be sign with `hyle registration`
@@ -36,7 +36,7 @@ The node's logs will display:
 
 ```bash
 INFO hyle::data_availability::node_state::verifiers: ✅ Risc0 proof verified.
-INFO hyle::data_availability::node_state::verifiers: 🔎 Program outputs: Successfully registered identity for account: 0x437aa724e898f0ba345852bbbc2e416d9346e1c9.metamask_identity
+INFO hyle::data_availability::node_state::verifiers: 🔎 Program outputs: Successfully registered identity for account: 0x437aa724e898f0ba345852bbbc2e416d9346e1c9.mmid
 ```
 
 ### Verify identity / Login
@@ -44,7 +44,7 @@ INFO hyle::data_availability::node_state::verifiers: 🔎 Program outputs: Succe
 To verify `0x437aa724e898f0ba345852bbbc2e416d9346e1c9`'s identity:
 
 ```bash
-cargo run -- verify-identity 0x437aa724e898f0ba345852bbbc2e416d9346e1c9.metamask_identity 0
+cargo run -- verify-identity 0x437aa724e898f0ba345852bbbc2e416d9346e1c9.mmid 0
 ```
 
 This command will:

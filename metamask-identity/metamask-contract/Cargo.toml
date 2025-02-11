@@ -3,8 +3,10 @@ resolver = "2"
 members = ["host", "contract", "methods"]
 
 [workspace.dependencies]
-sdk = { git = "https://github.com/hyle-org/hyle", package = "hyle-contract-sdk", branch = "transactions_events" } # don't forget to update methods/guest/Cargo.toml 
-client-sdk = { git = "https://github.com/hyle-org/hyle", package = "client-sdk", branch = "transactions_events" }
+# sdk = { git = "https://github.com/hyle-org/hyle", package = "hyle-contract-sdk", branch = "main" } # don't forget to update methods/guest/Cargo.toml 
+# client-sdk = { git = "https://github.com/hyle-org/hyle", package = "client-sdk", branch = "main" }
+sdk = { path = "/home/bertrand/workspace/hyle2/crates/contract-sdk", package = "hyle-contract-sdk" } # don't forget to update methods/guest/Cargo.toml 
+client-sdk = { path = "/home/bertrand/workspace/hyle2/crates/client-sdk", package="client-sdk", default-features = false, features = ["risc0", "rest"] }
 
 # Always optimize; building and running the guest takes much longer without optimization.
 [profile.dev]
