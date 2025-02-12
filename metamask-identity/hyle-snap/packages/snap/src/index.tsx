@@ -39,37 +39,37 @@ async function getAccount() {
 
   return state.account;
 }
-
-// Sign message using personal_sign
-async function signMessage(message: string) {
-  const hexMessage = toHexMessage(message); // Convert message to hex
-  console.log(hexMessage);
-  const ethAddr = await ethereum.request({
-    method: 'eth_requestAccounts',
-  });
-  console.log("account", ethAddr[0], hexMessage);
-
-  try {
-    const signature = await ethereum.request<string>({
-      method: 'personal_sign',
-      params: [hexMessage, ethAddr[0]],
-    });
-    console.log("signed");
-
-    console.log("signature", signature, hexMessage);
-    return signature;
-  } catch (error) {
-    console.log("error in signature", error);
-    await snap.request({
-      method: 'snap_notify',
-      params: {
-        type: 'inApp',
-        message: `Signing failed: ${error.message} with account ${account} and message ${message}`,
-      },
-    });
-    return 'Signing failed';
-  }
-}
+//
+//// Sign message using personal_sign
+//async function signMessage(message: string) {
+//  const hexMessage = toHexMessage(message); // Convert message to hex
+//  console.log(hexMessage);
+//  const ethAddr = await ethereum.request({
+//    method: 'eth_requestAccounts',
+//  });
+//  console.log("account", ethAddr[0], hexMessage);
+//
+//  try {
+//    const signature = await ethereum.request<string>({
+//      method: 'personal_sign',
+//      params: [hexMessage, ethAddr[0]],
+//    });
+//    console.log("signed");
+//
+//    console.log("signature", signature, hexMessage);
+//    return signature;
+//  } catch (error) {
+//    console.log("error in signature", error);
+//    await snap.request({
+//      method: 'snap_notify',
+//      params: {
+//        type: 'inApp',
+//        message: `Signing failed: ${error.message} with account ${account} and message ${message}`,
+//      },
+//    });
+//    return 'Signing failed';
+//  }
+//}
 
 // Convert message to hex format
 function toHexMessage(message: string): string {
@@ -82,44 +82,44 @@ function fromHexMessage(hexMessage: string): string {
   }
   return Buffer.from(hexMessage, 'hex').toString('utf8').replace(/\0/g, '');
 }
-
-export const onRpcRequest: OnRpcRequestHandler = async ({
-  origin,
-  request,
-}) => {
-  console.log('RPC request', request);
-  switch (request.method) {
-    case "get_account":
-      return await getIdentity();
-    case "register_account":
-      {
-        console.log("register_account");
-        const signature = await signMessage("hyle registration");
-        console.log("ouch", signature);
-        const generatedProof = await registerIdentity(signature);
-
-        //await snap.request({
-        //  method: 'snap_dialog',
-        //  params: {
-        //    type: 'alert',
-        //    content: (
-        //      <Box>
-        //        <Text>Registration Completed !</Text>
-        //        <Divider />
-        //        <Text>generatedProof tx:</Text>
-        //        <Text>{generatedProof}</Text>
-        //      </Box>
-        //    ),
-        //  },
-        //});
-      }
-      return "done!"
-
-    default:
-      throw new Error("Method not found.")
-  }
-}
-
+//
+//export const onRpcRequest: OnRpcRequestHandler = async ({
+//  origin,
+//  request,
+//}) => {
+//  console.log('RPC request', request);
+//  switch (request.method) {
+//    case "get_account":
+//      return await getIdentity();
+//    case "register_account":
+//      {
+//        console.log("register_account");
+//        const signature = await signMessage("hyle registration");
+//        console.log("ouch", signature);
+//        const generatedProof = await registerIdentity(signature);
+//
+//        //await snap.request({
+//        //  method: 'snap_dialog',
+//        //  params: {
+//        //    type: 'alert',
+//        //    content: (
+//        //      <Box>
+//        //        <Text>Registration Completed !</Text>
+//        //        <Divider />
+//        //        <Text>generatedProof tx:</Text>
+//        //        <Text>{generatedProof}</Text>
+//        //      </Box>
+//        //    ),
+//        //  },
+//        //});
+//      }
+//      return "done!"
+//
+//    default:
+//      throw new Error("Method not found.")
+//  }
+//}
+//
 //// Store account on Snap install
 //export const onInstall: OnInstallHandler = async () => {
 //  const account = await getAccount();
@@ -181,33 +181,33 @@ export const onHomePage: OnHomePageHandler = async () => {
   };
 };
 
-// Handle user actions
-export const onUserInput: OnUserInputHandler = async ({ id, event }) => {
-  if (event.type === UserInputEventType.ButtonClickEvent) {
-    switch (event.name) {
-      case 'register-button': {
-        const signature = await signMessage();
-        const generatedProof = await registerIdentity(signature);
-
-        await snap.request({
-          method: 'snap_dialog',
-          params: {
-            type: 'alert',
-            content: (
-              <Box>
-                <Text>Registration Completed !</Text>
-                <Divider />
-                <Text>generatedProof tx:</Text>
-                <Text>{generatedProof}</Text>
-              </Box>
-            ),
-          },
-        });
-        break;
-      }
-    }
-  }
-};
+//// Handle user actions
+//export const onUserInput: OnUserInputHandler = async ({ id, event }) => {
+//  if (event.type === UserInputEventType.ButtonClickEvent) {
+//    switch (event.name) {
+//      case 'register-button': {
+//        const signature = await signMessage();
+//        const generatedProof = await registerIdentity(signature);
+//
+//        await snap.request({
+//          method: 'snap_dialog',
+//          params: {
+//            type: 'alert',
+//            content: (
+//              <Box>
+//                <Text>Registration Completed !</Text>
+//                <Divider />
+//                <Text>generatedProof tx:</Text>
+//                <Text>{generatedProof}</Text>
+//              </Box>
+//            ),
+//          },
+//        });
+//        break;
+//      }
+//    }
+//  }
+//};
 
 export const onSignature: OnSignatureHandler = async ({
   signature,
