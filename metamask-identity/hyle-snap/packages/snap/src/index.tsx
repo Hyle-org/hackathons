@@ -47,17 +47,19 @@ async function signMessage(message: string) {
   const ethAddr = await ethereum.request({
     method: 'eth_requestAccounts',
   });
-  console.log(ethAddr[0]);
+  console.log("account", ethAddr[0], hexMessage);
 
   try {
     const signature = await ethereum.request<string>({
       method: 'personal_sign',
       params: [hexMessage, ethAddr[0]],
     });
+    console.log("signed");
 
+    console.log("signature", signature, hexMessage);
     return signature;
   } catch (error) {
-    console.log(error);
+    console.log("error in signature", error);
     await snap.request({
       method: 'snap_notify',
       params: {
@@ -91,7 +93,9 @@ export const onRpcRequest: OnRpcRequestHandler = async ({
       return await getIdentity();
     case "register_account":
       {
+        console.log("register_account");
         const signature = await signMessage("hyle registration");
+        console.log("ouch", signature);
         const generatedProof = await registerIdentity(signature);
 
         //await snap.request({
@@ -214,7 +218,8 @@ export const onSignature: OnSignatureHandler = async ({
       severity: SeverityLevel.Critical,
     };
   }
-  const { blobs }: { blobs: Array<Blob> } = JSON.parse(fromHexMessage(signature.data));
+
+  const { blobs, nonce } = parseMessage(fromHexMessage(signature.data));
 
   const renderInsight = (blob: Blob) => {
     console.log("render", blob);
@@ -223,7 +228,7 @@ export const onSignature: OnSignatureHandler = async ({
       case "hyllar2":
         {
           const action = deserializeERC20Action(blob);
-          return erc20ActionToInsight(action);
+          return erc20ActionToInsight(action.parameters);
         }
       default:
         return (<Text key="unknown">Unknown contract {blob.contract_name} </Text>);
@@ -233,6 +238,8 @@ export const onSignature: OnSignatureHandler = async ({
   return {
     content: (
       <Box>
+        <Heading>Signature Data:</Heading>
+        <Text>Nonce: {nonce.toString()}</Text>
         {blobs.map((blob, index) => (
           <Box key={`${blob.contract_name}-${index}`} >
             <Divider />
@@ -247,6 +254,38 @@ export const onSignature: OnSignatureHandler = async ({
     severity: SeverityLevel.Critical,
   };
 };
+
+function parseMessage(message: string): { blobs: Blob[], nonce: number } {
+  const blobs: Blob[] = [];
+
+  const firstSpace = message.indexOf(' ');
+  const nonce = parseInt(message.slice(firstSpace + 1, message.indexOf(' ', firstSpace + 1)), 10);
+
+  // Retirer le nonce et le mot "verify" pour traiter le reste
+  const remaining = message.slice(firstSpace + 1 + nonce.toString().length).trim();
+
+  // Séparer les parties en fonction du nom du contrat suivi des crochets
+  const regex = /(\w+\d*)\s\[(.*?)\]/g;
+  let match;
+
+  while ((match = regex.exec(remaining)) !== null) {
+    const contractName = match[1] || ""; // Nom du contrat
+    const dataString = match[2] || ""; // Contenu du tableau sous forme de string
+
+    // Convertir la chaîne des données en tableau de nombres
+    const data = dataString
+      .split(',') // Diviser par la virgule
+      .map(num => parseInt(num.trim(), 10)); // Convertir chaque élément en nombre
+
+    // Ajouter le Blob avec le nonce
+    blobs.push({
+      contract_name: contractName, // Nom du contrat
+      data: data,
+    });
+  }
+
+  return { blobs, nonce };
+}
 
 export const erc20ActionToInsight = (action: ERC20Action): string => {
   if ("TotalSupply" in action) {

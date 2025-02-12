@@ -39,6 +39,24 @@ const schema = BorshSchema.Enum({
 });
 
 
+//pub struct StructuredBlobData<Parameters> {
+//    pub caller: Option<BlobIndex>,
+//    pub callees: Option<Vec<BlobIndex>>,
+//    pub parameters: Parameters,
+//}
+export type StructuredBlobData<Parameters> = {
+  caller: number | null;
+  callees: number[] | null;
+  parameters: Parameters;
+};
+
+const structuredBlobDataSchema = (schema: BorshSchema) =>
+  BorshSchema.Struct({
+    caller: BorshSchema.Option(BorshSchema.u32),
+    callees: BorshSchema.Option(BorshSchema.Vec(BorshSchema.u32)),
+    parameters: schema,
+  });
+
 export type ERC20Action =
   | { TotalSupply: {} }
   | { BalanceOf: { account: string } }
@@ -56,19 +74,27 @@ export const buildTransferBlob = (
     Transfer: { recipient, amount },
   };
 
+  const structured: StructuredBlobData<ERC20Action> = {
+    caller: null,
+    callees: null,
+    parameters: action,
+  };
+
   const blob: Blob = {
     contract_name: token,
-    data: serializeERC20Action(action),
+    data: serializeERC20Action(structured),
   };
   return blob;
 };
 
-export const serializeERC20Action = (action: ERC20Action): number[] => {
-  return Array.from(borshSerialize(erc20Schema, action));
+export const serializeERC20Action = (action: StructuredBlobData<ERC20Action>,): number[] => {
+  return Array.from(
+    borshSerialize(structuredBlobDataSchema(erc20Schema), action),
+  );
 };
 
-export const deserializeERC20Action = (blob: Blob): ERC20Action => {
-  return borshDeserialize(erc20Schema, Buffer.from(blob.data));
+export const deserializeERC20Action = (blob: Blob): StructuredBlobData<ERC20Action> => {
+  return borshDeserialize(structuredBlobDataSchema(erc20Schema), Buffer.from(blob.data));
 };
 
 const erc20Schema = BorshSchema.Enum({

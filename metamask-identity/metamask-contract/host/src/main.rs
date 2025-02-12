@@ -39,9 +39,6 @@ struct Cli {
 enum Commands {
     RunServer,
     RegisterContract {},
-    RegisterIdentity { identity: String, password: String },
-    VerifyIdentity { public_key: String, nonce: u32 },
-    GetIdentity { public_key: String },
     ValidateSignature { account: String, signature: String },
 }
 
@@ -85,196 +82,6 @@ async fn main() {
 
             println!("✅ Register contract tx sent. Tx hash: {}", res);
         }
-        Commands::RegisterIdentity { identity, password } => {
-            println!("contract_name {:?}", contract_name.clone());
-            // Fetch the initial state from the node
-            let initial_state: IdentityContractState = client
-                .get_contract(&contract_name.clone().into())
-                .await
-                .unwrap()
-                .state
-                .try_into()
-                .unwrap();
-
-            println!("Initial state {:?}", initial_state.clone());
-            println!("Public key {:?}", identity.clone());
-            // ----
-            // Build the blob transaction
-            // ----
-
-            let action = sdk::identity_provider::IdentityAction::RegisterIdentity {
-                account: identity.clone(),
-            };
-
-            let blob_data: sdk::BlobData =
-                sdk::BlobData(borsh::to_vec(&action).expect("failed to encode BlobData"));
-
-            let blobs = vec![sdk::Blob {
-                contract_name: contract_name.clone().into(),
-                data: blob_data,
-            }];
-
-            let blob_tx = BlobTransaction {
-                identity: identity.clone().into(),
-                blobs: blobs.clone(),
-            };
-
-            // Send the blob transaction
-            let blob_tx_hash = client.send_tx_blob(&blob_tx).await.unwrap();
-            println!("✅ Blob tx sent. Tx hash: {}", blob_tx_hash);
-            println!("✅ Blob tx identity {}", blob_tx.identity);
-
-            // ----
-            // Prove the state transition
-            // ----
-
-            println!("contract_name: {}", contract_name);
-
-            // Build the contract input
-            let inputs = ContractInput {
-                initial_state: initial_state.as_digest(),
-                identity: identity.clone().into(),
-                tx_hash: blob_tx_hash,
-                private_input: password.into_bytes().to_vec(),
-                blobs: blobs.clone(),
-                index: sdk::BlobIndex(0),
-                tx_ctx: None,
-            };
-
-            println!("inputs: {:?}", inputs.clone());
-
-            // Generate the zk proof
-            let proof = prover.prove(inputs).await.unwrap();
-
-            println!("proof generated");
-
-            let proof_tx = ProofTransaction {
-                proof,
-                contract_name: contract_name.clone().into(),
-            };
-
-            // Send the proof transaction
-            let proof_tx_hash = client.send_tx_proof(&proof_tx).await.unwrap();
-            println!("✅ Proof tx sent. Tx hash: {}", proof_tx_hash);
-        }
-        Commands::VerifyIdentity { public_key, nonce } => {
-            {
-                // Fetch the initial state from the node
-                let initial_state: IdentityContractState = client
-                    .get_contract(&contract_name.clone().into())
-                    .await
-                    .unwrap()
-                    .state
-                    .try_into()
-                    .unwrap();
-                // ----
-                // Build the blob transaction
-                // ----
-
-                let action = sdk::identity_provider::IdentityAction::VerifyIdentity {
-                    account: public_key.clone(),
-                    nonce,
-                };
-                let blobs = vec![sdk::Blob {
-                    contract_name: contract_name.clone().into(),
-                    data: sdk::BlobData(borsh::to_vec(&action).expect("failed to encode BlobData")),
-                }];
-                let blob_tx = BlobTransaction {
-                    identity: public_key.into(),
-                    blobs: blobs.clone(),
-                };
-
-                // Send the blob transaction
-                let blob_tx_hash = client.send_tx_blob(&blob_tx).await.unwrap();
-                println!("✅ Blob tx sent. Tx hash: {}", blob_tx_hash);
-
-                // ----
-                // Prove the state transition
-                // ----
-
-                // Build the contract input
-                let inputs = ContractInput {
-                    initial_state: initial_state.as_digest(),
-                    identity: blob_tx.identity,
-                    tx_hash: blob_tx_hash.clone(),
-                    private_input: vec![],
-                    blobs: blobs.clone(),
-                    index: sdk::BlobIndex(0),
-                    tx_ctx: None,
-                };
-
-                // Generate the zk proof
-                let proof = prover.prove(inputs).await.unwrap();
-
-                let proof_tx = ProofTransaction {
-                    proof,
-                    contract_name: contract_name.clone().into(),
-                };
-
-                // Send the proof transaction
-                let proof_tx_hash = client.send_tx_proof(&proof_tx).await.unwrap();
-                println!("✅ Proof tx sent. Tx hash: {}", proof_tx_hash);
-            }
-        }
-        Commands::GetIdentity { public_key } => {
-            {
-                // Fetch the initial state from the node
-                let initial_state: IdentityContractState = client
-                    .get_contract(&contract_name.clone().into())
-                    .await
-                    .unwrap()
-                    .state
-                    .try_into()
-                    .unwrap();
-                // ----
-                // Build the blob transaction
-                // ----
-
-                let action = sdk::identity_provider::IdentityAction::GetIdentityInfo {
-                    account: public_key.clone(),
-                };
-                let blobs = vec![sdk::Blob {
-                    contract_name: contract_name.clone().into(),
-                    data: sdk::BlobData(borsh::to_vec(&action).expect("failed to encode BlobData")),
-                }];
-                let blob_tx = BlobTransaction {
-                    identity: public_key.into(),
-                    blobs: blobs.clone(),
-                };
-
-                // Send the blob transaction
-                let blob_tx_hash = client.send_tx_blob(&blob_tx).await.unwrap();
-                println!("✅ Blob tx sent. Tx hash: {}", blob_tx_hash);
-
-                // ----
-                // Prove the state transition
-                // ----
-
-                // Build the contract input
-                let inputs = ContractInput {
-                    initial_state: initial_state.as_digest(),
-                    identity: blob_tx.identity,
-                    tx_hash: blob_tx_hash.clone(),
-                    private_input: vec![],
-                    blobs: blobs.clone(),
-                    index: sdk::BlobIndex(0),
-                    tx_ctx: None,
-                };
-
-                // Generate the zk proof
-                let proof = prover.prove(inputs).await.unwrap();
-
-                let proof_tx = ProofTransaction {
-                    proof,
-                    contract_name: contract_name.clone().into(),
-                };
-
-                // Send the proof transaction
-                let proof_tx_hash = client.send_tx_proof(&proof_tx).await.unwrap();
-                println!("✅ Proof tx sent. Tx hash: {}", proof_tx_hash);
-            }
-        }
-
         Commands::ValidateSignature { signature, account } => {
             //Example \`personal_sign\` message
             //0xc4b1989d045e1f9aacc448032a7e278780de9a1c1735984c8d4e95cc1840715b3255b0cb791df3c5c137fa22773f9f6976b96418581e44f3fdf1e6ec395f6b661b
@@ -353,7 +160,7 @@ async fn prove(Json(request): Json<ProveRequest>) -> Json<TxHash> {
         initial_state: initial_state.as_digest(),
         identity: request.identity.clone().into(),
         tx_hash: request.tx_hash.clone().into(),
-        private_input: request.signature.into_bytes().to_vec(),
+        private_input: vec![],
         blobs: blobs.clone(),
         index: sdk::BlobIndex(0),
         tx_ctx: None,
