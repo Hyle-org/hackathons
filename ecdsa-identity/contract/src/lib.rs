@@ -123,7 +123,7 @@ pub fn execute_action(
 // but you could do the same logic without it.
 impl IdentityContractState {
     fn register_identity(&mut self, pub_key: &str, signature: &str) -> Result<String, String> {
-        let valid = verify_signature(pub_key, signature, "Hyle Registeration").unwrap();
+        let valid = verify_signature(pub_key, signature, "Hyle Registration").unwrap();
 
         if !valid {
             return Err("Invalid signature".to_string());
