@@ -3,28 +3,53 @@ use std::collections::BTreeMap;
 use bincode::{Decode, Encode};
 use serde::{Deserialize, Serialize};
 
+use actions::IdentityAction;
+
 use hex::decode;
 use p384::ecdsa::signature::Verifier;
 use p384::ecdsa::{Signature, VerifyingKey};
-use sdk::{identity_provider::IdentityVerification, Digestable, RunResult};
+use sdk::{Digestable, RunResult};
 use sha2::{Digest, Sha256};
+
+pub mod actions;
+
+extern crate alloc;
 
 /// Entry point of the contract's logic
 pub fn execute(contract_input: sdk::ContractInput) -> RunResult<IdentityContractState> {
     // Parse contract inputs
-    let (input, action) =
-        sdk::guest::init_raw::<sdk::identity_provider::IdentityAction>(contract_input);
+    let (input, action) = sdk::guest::init_raw::<IdentityAction>(contract_input);
 
     let action = action.ok_or("Failed to parse action")?;
 
     // Parse initial state
-    let state: IdentityContractState = input.initial_state.clone().into();
+    let state: IdentityContractState = input
+        .initial_state
+        .clone()
+        .try_into()
+        .expect("failed to parse state");
 
-    // Extract private information
-    let password = core::str::from_utf8(&input.private_input).unwrap();
+    let identity = input.identity;
+    let contract_name = &input
+        .blobs
+        .get(input.index.0)
+        .ok_or("No blob")?
+        .contract_name;
 
-    // Execute the given action
-    sdk::identity_provider::execute_action(state, action, password)
+    if input.index.0 == 0 {
+        // Identity blob should be at position 0
+        let blobs = input
+            .blobs
+            .split_first()
+            .map(|(_, rest)| rest)
+            .ok_or("No blobs")?;
+        execute_action(state, action, contract_name, identity, blobs)
+    } else {
+        // Otherwise, it's less efficient as need to clone blobs & the remove is O(n)
+        let mut blobs = input.blobs.clone();
+        blobs.remove(input.index.0);
+        execute_action(state, action, contract_name, identity, &blobs)
+    }
 }
 
 /// Struct to hold account's information
@@ -54,21 +79,54 @@ impl IdentityContractState {
     }
 }
 
+pub fn execute_action(
+    mut state: IdentityContractState,
+    action: IdentityAction,
+    contract_name: &sdk::ContractName,
+    account: sdk::Identity,
+    blobs: &[sdk::Blob],
+) -> RunResult<IdentityContractState> {
+    if !account.0.ends_with(&contract_name.0) {
+        return Err(format!(
+            "Invalid account extension. '.{contract_name}' expected."
+        ));
+    }
+    let pub_key = account
+        .0
+        .trim_end_matches(&contract_name.0)
+        .trim_end_matches(".");
+
+    let program_output = match action {
+        IdentityAction::RegisterIdentity { signature } => {
+            state.register_identity(pub_key, &signature)
+        }
+        IdentityAction::VerifyIdentity { nonce, signature } => match signature {
+            Some(sig) => match state.verify_identity(pub_key, nonce, blobs, &sig) {
+                Ok(true) => Ok(format!("Identity verified for account: {}", account)),
+                Ok(false) => Err(format!(
+                    "Identity verification failed for account: {}",
+                    account
+                )),
+                Err(err) => Err(format!("⚠️ Error verifying identity: {}", err)),
+            },
+            None => Err(format!(
+                "Identity verification failed for account {}, missing signature",
+                account
+            )),
+        },
+    };
+    program_output.map(|output| (output, state, alloc::vec![]))
+}
+
 // The IdentityVerification trait is implemented for the IdentityContractState struct
 // This trait is given by the sdk, as a "standard" for identity verification contracts
 // but you could do the same logic without it.
-impl IdentityVerification for IdentityContractState {
-    fn register_identity(
-        &mut self,
-        account: &str,
-        private_input: &str,
-    ) -> Result<(), &'static str> {
-        let pub_key = account.trim_end_matches(".ecdsa_identity");
-
-        let valid = verify_signature(pub_key, private_input, b"Hyle Registeration").unwrap();
+impl IdentityContractState {
+    fn register_identity(&mut self, pub_key: &str, signature: &str) -> Result<String, String> {
+        let valid = verify_signature(pub_key, signature, "Hyle Registeration").unwrap();
 
         if !valid {
-            return Err("Invalid signature");
+            return Err("Invalid signature".to_string());
         }
 
         let mut hasher = Sha256::new();
@@ -81,32 +139,39 @@ impl IdentityVerification for IdentityContractState {
 
         if self
             .identities
-            .insert(account.to_string(), account_info)
+            .insert(pub_key.to_string(), account_info)
             .is_some()
         {
-            return Err("Identity already exists");
+            return Err("Identity already exists".to_string());
         }
-        Ok(())
+        Ok("Identity registered".to_string())
     }
 
     fn verify_identity(
         &mut self,
-        account: &str,
+        pub_key: &str,
         nonce: u32,
-        private_input: &str,
-    ) -> Result<bool, &'static str> {
-        match self.identities.get_mut(account) {
+        blobs: &[sdk::Blob],
+        signature: &str,
+    ) -> Result<bool, String> {
+        match self.identities.get_mut(pub_key) {
             Some(stored_info) => {
                 if nonce != stored_info.nonce {
-                    return Err("Invalid nonce");
+                    return Err("Invalid nonce".to_string());
                 }
 
-                let pub_key = account.trim_end_matches(".ecdsa_identity");
+                let message = blobs
+                    .iter()
+                    .map(|blob| format!("{} {:?}", blob.contract_name, blob.data.0))
+                    .collect::<Vec<String>>()
+                    .join(" ");
 
-                let valid = verify_signature(pub_key, private_input, b"Hyle Verification").unwrap();
+                let message = format!("verify {} {}", nonce, message);
+
+                let valid = verify_signature(pub_key, signature, &message).unwrap();
 
                 if !valid {
-                    return Err("Invalid signature");
+                    return Err("Invalid signature".to_string());
                 }
 
                 let mut hasher = Sha256::new();
@@ -120,12 +185,12 @@ impl IdentityVerification for IdentityContractState {
                 stored_info.nonce += 1;
                 Ok(true)
             }
-            None => Err("Identity not found"),
+            None => Err("Identity not found".to_string()),
         }
     }
 
+    #[allow(dead_code)]
     fn get_identity_info(&self, account: &str) -> Result<String, &'static str> {
-        // test_http_client();
         match self.identities.get(account) {
             Some(info) => Ok(serde_json::to_string(&info).map_err(|_| "Failed to serialize")?),
             None => Err("Identity not found"),
@@ -159,7 +224,7 @@ impl From<sdk::StateDigest> for IdentityContractState {
     }
 }
 
-fn verify_signature(pub_key: &str, signature_hex: &str, message: &[u8]) -> Result<bool, String> {
+fn verify_signature(pub_key: &str, signature_hex: &str, message: &str) -> Result<bool, String> {
     // decode pubkey
     let pubkey_bytes = decode(pub_key).map_err(|_| "Failed to decode Pub key".to_string())?;
     let verifying_key =
@@ -170,7 +235,9 @@ fn verify_signature(pub_key: &str, signature_hex: &str, message: &[u8]) -> Resul
         decode(signature_hex).map_err(|_| "Failed to decode Signature".to_string())?;
     let signature = Signature::from_der(&signature_bytes).unwrap();
 
-    let is_valid = verifying_key.verify(message, &signature).is_ok();
+    let msg = message.as_bytes();
+
+    let is_valid = verifying_key.verify(msg, &signature).is_ok();
 
     Ok(is_valid)
 }
