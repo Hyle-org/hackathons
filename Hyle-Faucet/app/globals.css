@@ -1,0 +1,237 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 3.9%;
+    --foreground: 0 0% 98%;
+
+    --card: 0 0% 3.9%;
+    --card-foreground: 0 0% 98%;
+
+    --popover: 0 0% 3.9%;
+    --popover-foreground: 0 0% 98%;
+
+    --primary: 0 0% 98%;
+    --primary-foreground: 0 0% 9%;
+
+    --secondary: 0 0% 14.9%;
+    --secondary-foreground: 0 0% 98%;
+
+    --muted: 0 0% 14.9%;
+    --muted-foreground: 0 0% 63.9%;
+
+    --accent: 165 45% 40%;
+    --accent-foreground: 0 0% 98%;
+
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 0 0% 14.9%;
+    --input: 0 0% 14.9%;
+    --ring: 0 0% 83.9%;
+
+    --radius: 0.5rem;
+
+    [data-state="active"] {
+      background-color: var(--tab-color);
+    }
+    .focus-visible\:ring-2:focus-visible {
+      --tw-ring-color: var(--tab-color);
+    }
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    background-color: #d8d8d5;
+  }
+}
+
+.aero-window {
+  background: linear-gradient(
+    120deg,
+    rgba(150, 163, 184, 0.9) 0%,
+    rgba(150, 163, 184, 0.5) 100%
+  );
+  backdrop-filter: blur(7px);
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.2);
+}
+
+@media (max-width: 640px) {
+  @keyframes floatSlow {
+    0% {
+      background-position: 0% 0%;
+    }
+    20% {
+      background-position: 8% 10%;
+    }
+    40% {
+      background-position: 5% 12%;
+    }
+    60% {
+      background-position: 10% 8%;
+    }
+    80% {
+      background-position: 6% 11%;
+    }
+    100% {
+      background-position: 0% 0%;
+    }
+  }
+}
+
+@media (min-width: 641px) and (max-width: 768px) {
+  @keyframes floatSlow {
+    0% {
+      background-position: 0% 0%;
+    }
+    20% {
+      background-position: 10% 12%;
+    }
+    40% {
+      background-position: 8% 15%;
+    }
+    60% {
+      background-position: 12% 10%;
+    }
+    80% {
+      background-position: 9% 13%;
+    }
+    100% {
+      background-position: 0% 0%;
+    }
+  }
+}
+
+@media (min-width: 769px) and (max-width: 1024px) {
+  @keyframes floatSlow {
+    0% {
+      background-position: 0% 0%;
+    }
+    20% {
+      background-position: 12% 15%;
+    }
+    40% {
+      background-position: 10% 18%;
+    }
+    60% {
+      background-position: 15% 12%;
+    }
+    80% {
+      background-position: 11% 16%;
+    }
+    100% {
+      background-position: 0% 0%;
+    }
+  }
+}
+
+@media (max-width: 640px) {
+  @keyframes floatSlow {
+    0% {
+      background-position: 0% 0%;
+    }
+    20% {
+      background-position: 8% 10%;
+    }
+    40% {
+      background-position: 5% 12%;
+    }
+    60% {
+      background-position: 10% 8%;
+    }
+    80% {
+      background-position: 6% 11%;
+    }
+    100% {
+      background-position: 0% 0%;
+    }
+  }
+  .bg-float {
+    animation: floatSlow 120s linear infinite;
+  }
+}
+
+@media (min-width: 641px) and (max-width: 768px) {
+  @keyframes floatSlow {
+    0% {
+      background-position: 0% 0%;
+    }
+    20% {
+      background-position: 10% 12%;
+    }
+    40% {
+      background-position: 8% 15%;
+    }
+    60% {
+      background-position: 12% 10%;
+    }
+    80% {
+      background-position: 9% 13%;
+    }
+    100% {
+      background-position: 0% 0%;
+    }
+  }
+  .bg-float {
+    animation: floatSlow 150s linear infinite;
+  }
+}
+
+@media (min-width: 769px) and (max-width: 1024px) {
+  @keyframes floatSlow {
+    0% {
+      background-position: 0% 0%;
+    }
+    20% {
+      background-position: 12% 15%;
+    }
+    40% {
+      background-position: 10% 18%;
+    }
+    60% {
+      background-position: 15% 12%;
+    }
+    80% {
+      background-position: 11% 16%;
+    }
+    100% {
+      background-position: 0% 0%;
+    }
+  }
+  .bg-float {
+    animation: floatSlow 180s linear infinite;
+  }
+}
+
+@media (min-width: 1025px) {
+  @keyframes floatSlow {
+    0% {
+      background-position: 0% 0%;
+    }
+    20% {
+      background-position: 15% 20%;
+    }
+    40% {
+      background-position: 12% 22%;
+    }
+    60% {
+      background-position: 18% 15%;
+    }
+    80% {
+      background-position: 14% 19%;
+    }
+    100% {
+      background-position: 0% 0%;
+    }
+  }
+  .bg-float {
+    animation: floatSlow 210s linear infinite;
+  }
+}
