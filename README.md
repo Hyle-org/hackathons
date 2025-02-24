@@ -19,7 +19,7 @@ Hylé's issues for hackathons &amp; external contributions.
 ### Tech stack
 
 - Rust
-- Hylé supports [several proving schemes](https://docs.hyle.eu/developers/general-doc/supported-proving-schemes/): choose your favorite. For some issues, we will add a recommendation on which proving scheme to use; for most issues, you can build with whichever stack you're more comfortable with.
+- Hylé supports [several proving schemes](https://docs.hyle.eu/concepts/proof-generation/#our-supported-proving-schemes): choose your favorite. For some issues, we will add a recommendation on which proving scheme to use; for most issues, you can build with whichever stack you're more comfortable with.
 
 ### Apply
 
